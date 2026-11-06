@@ -12,8 +12,19 @@
         <local:EnumDisplayConverter x:Key="EnumDisplay" />
         <local:BoolToVisibilityConverter x:Key="BoolVis" />
         <local:NonZeroToVisibilityConverter x:Key="NonZeroVis" />
+        <local:NonZeroToVisibilityConverter x:Key="ZeroVis" Invert="True" />
         <local:NotEmptyToVisibilityConverter x:Key="NotEmptyVis" />
         <local:IntEqualsConverter x:Key="IntEquals" />
+        <local:MacroTipConverter x:Key="MacroTip" />
+
+        <!-- Flat little buttons for list rows / bars -->
+        <Style x:Key="FlatButton" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="5,0" />
+            <Setter Property="Margin" Value="1,0" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
 
         <DataTemplate x:Key="EnumItem">
             <TextBlock Text="{Binding Converter={StaticResource EnumDisplay}}" />
@@ -53,17 +64,40 @@
         <KeyBinding Key="L" Modifiers="Control" Command="{Binding ClearCommand}" />
         <KeyBinding Key="Pause" Command="{Binding TogglePauseCommand}" />
         <KeyBinding Key="H" Modifiers="Control" Command="{Binding ToggleHexCommand}" />
+        <KeyBinding Key="F3" Command="{Binding FindNextCommand}" />
+        <KeyBinding Key="F3" Modifiers="Shift" Command="{Binding FindPreviousCommand}" />
+        <KeyBinding Key="D1" Modifiers="Control" Command="{Binding SendMacroNumberCommand}" CommandParameter="1" />
+        <KeyBinding Key="D2" Modifiers="Control" Command="{Binding SendMacroNumberCommand}" CommandParameter="2" />
+        <KeyBinding Key="D3" Modifiers="Control" Command="{Binding SendMacroNumberCommand}" CommandParameter="3" />
+        <KeyBinding Key="D4" Modifiers="Control" Command="{Binding SendMacroNumberCommand}" CommandParameter="4" />
+        <KeyBinding Key="D5" Modifiers="Control" Command="{Binding SendMacroNumberCommand}" CommandParameter="5" />
+        <KeyBinding Key="D6" Modifiers="Control" Command="{Binding SendMacroNumberCommand}" CommandParameter="6" />
+        <KeyBinding Key="D7" Modifiers="Control" Command="{Binding SendMacroNumberCommand}" CommandParameter="7" />
+        <KeyBinding Key="D8" Modifiers="Control" Command="{Binding SendMacroNumberCommand}" CommandParameter="8" />
+        <KeyBinding Key="D9" Modifiers="Control" Command="{Binding SendMacroNumberCommand}" CommandParameter="9" />
     </Window.InputBindings>
 
     <DockPanel>
         <!-- Menu -->
         <Menu DockPanel.Dock="Top">
             <MenuItem Header="_File">
+                <MenuItem Header="_Send file…" Click="OnSendFile" IsEnabled="{Binding IsConnected}" />
+                <Separator />
                 <MenuItem Header="E_xit" Click="OnExit" />
             </MenuItem>
             <MenuItem Header="_Edit">
                 <MenuItem Header="_Copy" InputGestureText="Ctrl+C" Click="OnCopy" />
+                <MenuItem Header="Copy _as">
+                    <MenuItem Header="_Text" Tag="Text" Click="OnCopyAs" />
+                    <MenuItem Header="_Hex string" Tag="Hex" Click="OnCopyAs" />
+                    <MenuItem Header="_C array" Tag="CArray" Click="OnCopyAs" />
+                    <MenuItem Header="_Base64" Tag="Base64" Click="OnCopyAs" />
+                </MenuItem>
                 <MenuItem Header="Select _all" InputGestureText="Ctrl+A" Click="OnSelectAll" />
+                <Separator />
+                <MenuItem Header="_Find…" InputGestureText="Ctrl+F" Click="OnFind" />
+                <MenuItem Header="Find _next" InputGestureText="F3" Command="{Binding FindNextCommand}" />
+                <MenuItem Header="Find _previous" InputGestureText="Shift+F3" Command="{Binding FindPreviousCommand}" />
                 <Separator />
                 <MenuItem Header="C_lear" InputGestureText="Ctrl+L" Command="{Binding ClearCommand}" />
             </MenuItem>
@@ -101,6 +135,7 @@
                 <MenuItem Header="Show _TX" IsCheckable="True" IsChecked="{Binding ShowTx}" />
                 <MenuItem Header="Show _events" IsCheckable="True" IsChecked="{Binding ShowEvents}" />
                 <MenuItem Header="_Word wrap" IsCheckable="True" IsChecked="{Binding WordWrap}" />
+                <MenuItem Header="_Macro bar" IsCheckable="True" IsChecked="{Binding ShowMacroBar}" />
                 <Separator />
                 <MenuItem Header="He_x view" InputGestureText="Ctrl+H" IsCheckable="True" IsChecked="{Binding ShowHex}" />
                 <MenuItem Header="Hex _bytes per row">
@@ -179,6 +214,12 @@
                     <Button Content="Cancel" Command="{Binding CancelSendsCommand}" Margin="6,0,0,0" Padding="6,0" />
                 </StackPanel>
             </StatusBarItem>
+            <StatusBarItem Visibility="{Binding IsSendingFile, Converter={StaticResource BoolVis}}">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock VerticalAlignment="Center" Foreground="#B26A00" Text="{Binding SendFileText}" />
+                    <Button Content="Cancel" Command="{Binding CancelSendsCommand}" Margin="6,0,0,0" Padding="6,0" />
+                </StackPanel>
+            </StatusBarItem>
             <StatusBarItem Visibility="{Binding IsPaused, Converter={StaticResource BoolVis}}">
                 <TextBlock Text="DISPLAY PAUSED" Foreground="#B26A00" FontWeight="SemiBold" />
             </StatusBarItem>
@@ -192,23 +233,118 @@
             <DockPanel>
                 <TextBlock DockPanel.Dock="Bottom" Text="{Binding SendError}" Foreground="#C62828" Margin="0,4,0,0"
                            Visibility="{Binding SendError, Converter={StaticResource NotEmptyVis}}" />
+
+                <!-- Macro bar -->
+                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6" Visibility="{Binding ShowMacroBar, Converter={StaticResource BoolVis}}">
+                    <Button DockPanel.Dock="Right" Content="+ Macro" Padding="8,1" Margin="0" Click="OnAddMacro"
+                            ToolTip="New macro (starts with the send box contents)" />
+                    <TextBlock DockPanel.Dock="Left" Text="Macros" Foreground="#777" VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <TextBlock Text="none yet — click + Macro, or ☆ on a recent send" Foreground="#999" VerticalAlignment="Center" FontStyle="Italic"
+                               Visibility="{Binding Macros.Count, Converter={StaticResource ZeroVis}}" />
+                    <ItemsControl ItemsSource="{Binding Macros}" ToolTip="Click to send · right-click to edit · Ctrl+1…9 send the first nine">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Button Content="{Binding Name}" Padding="8,1" Margin="0,0,4,2" ToolTip="{Binding Converter={StaticResource MacroTip}}"
+                                        Command="{Binding DataContext.SendMacroCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                        CommandParameter="{Binding}">
+                                    <Button.ContextMenu>
+                                        <ContextMenu>
+                                            <MenuItem Header="_Edit…" Click="OnEditMacro" />
+                                            <MenuItem Header="Move _left" Click="OnMoveMacroLeft" />
+                                            <MenuItem Header="Move _right" Click="OnMoveMacroRight" />
+                                            <Separator />
+                                            <MenuItem Header="_Delete" Click="OnDeleteMacro" />
+                                        </ContextMenu>
+                                    </Button.ContextMenu>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </DockPanel>
                 <ComboBox DockPanel.Dock="Left" Width="80" ItemsSource="{x:Static vm:MainViewModel.SendModes}" SelectedItem="{Binding SendMode}"
                           ItemTemplate="{StaticResource EnumItem}" ToolTip="Text / Hex (0xDEADBEEF, 01 02 AA) / Escaped (\r \n \t \0 \\ \xHH)" />
                 <Button DockPanel.Dock="Right" Content="Send" Command="{Binding SendCommand}" Margin="6,0,0,0" MinWidth="70" />
                 <ComboBox DockPanel.Dock="Right" Width="110" Margin="6,0,0,0" ItemsSource="{x:Static vm:MainViewModel.LineEndings}"
                           SelectedItem="{Binding LineEnding}" ItemTemplate="{StaticResource EnumItem}" IsEnabled="{Binding LineEndingEnabled}"
                           ToolTip="Appended to Text and Escaped sends" />
+                <ToggleButton x:Name="RecentToggle" DockPanel.Dock="Right" Content="▾ Recent" Margin="6,0,0,0" Padding="6,0"
+                              IsChecked="{Binding IsRecentOpen}" IsEnabled="{Binding HasHistory}"
+                              ToolTip="Recent sends — pick one to resend (Alt+↓ or F4 in the send box)" />
                 <TextBox x:Name="SendBox" Text="{Binding SendText, UpdateSourceTrigger=PropertyChanged}" FontFamily="Cascadia Mono, Consolas"
                          FontSize="13" VerticalContentAlignment="Center" Padding="2,3" PreviewKeyDown="OnSendBoxKeyDown" />
             </DockPanel>
         </Border>
 
+        <!-- Recent sends dropdown (opens above the send box) -->
+        <Popup x:Name="RecentPopup" IsOpen="{Binding IsRecentOpen}" PlacementTarget="{Binding ElementName=SendBox}" Placement="Top"
+               StaysOpen="False" Width="{Binding ActualWidth, ElementName=SendBox}" MinWidth="420"
+               Opened="OnRecentOpened" Closed="OnRecentClosed">
+            <Border Background="White" BorderBrush="#A0A0A0" BorderThickness="1">
+                <DockPanel>
+                    <DockPanel DockPanel.Dock="Bottom" Background="#F3F3F3">
+                        <Button DockPanel.Dock="Right" Content="Clear history" Command="{Binding ClearHistoryCommand}" Padding="6,0" Margin="4,2" />
+                        <TextBlock Text="Enter send · Shift+Enter or click to edit · Del remove" Foreground="#777" Margin="6,3" VerticalAlignment="Center" />
+                    </DockPanel>
+                    <ListBox x:Name="RecentList" ItemsSource="{Binding RecentItems}" MaxHeight="340" BorderThickness="0"
+                             HorizontalContentAlignment="Stretch" PreviewKeyDown="OnRecentKeyDown"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <EventSetter Event="MouseLeftButtonUp" Handler="OnRecentItemClick" />
+                                <Setter Property="Padding" Value="4,2" />
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <DockPanel>
+                                    <Button DockPanel.Dock="Right" Content="✕" Style="{StaticResource FlatButton}" Foreground="#999"
+                                            ToolTip="Remove from history" Click="OnRecentRemove" />
+                                    <Button DockPanel.Dock="Right" Content="☆" Style="{StaticResource FlatButton}" Foreground="#B08000"
+                                            ToolTip="Save as macro" Click="OnRecentSaveMacro" />
+                                    <Button DockPanel.Dock="Right" Content="Send ▶" Style="{StaticResource FlatButton}" Foreground="#0B5CAD"
+                                            FontWeight="SemiBold" ToolTip="Send again now (keeps this list open)" Click="OnRecentSend" />
+                                    <TextBlock DockPanel.Dock="Right" Text="{Binding Tag}" Foreground="#888" FontSize="10" VerticalAlignment="Center" Margin="8,0" />
+                                    <TextBlock Text="{Binding Text}" FontFamily="Cascadia Mono, Consolas" FontSize="13"
+                                               TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                </DockPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </DockPanel>
+            </Border>
+        </Popup>
+
+        <!-- Search bar -->
+        <Border DockPanel.Dock="Top" Visibility="{Binding IsSearchOpen, Converter={StaticResource BoolVis}}"
+                Background="#FFF8E1" BorderBrush="#E6DCA8" BorderThickness="0,0,0,1" Padding="8,4">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="Find" VerticalAlignment="Center" Margin="0,0,6,0" />
+                <TextBox x:Name="SearchBox" Width="280" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                         FontFamily="Cascadia Mono, Consolas" FontSize="13" Padding="2,1" VerticalContentAlignment="Center"
+                         PreviewKeyDown="OnSearchKeyDown" />
+                <ComboBox Width="80" Margin="6,0,0,0" ItemsSource="{x:Static vm:MainViewModel.SendModes}" SelectedItem="{Binding SearchMode}"
+                          ItemTemplate="{StaticResource EnumItem}" ToolTip="Pattern is Text, Hex (0D 0A) or Escaped (\r\n)" />
+                <CheckBox Content="Match case" IsChecked="{Binding SearchMatchCase}" VerticalAlignment="Center" Margin="4,0,8,0" />
+                <Button Content="▲" Command="{Binding FindPreviousCommand}" ToolTip="Previous match (Shift+F3 / Shift+Enter)" Padding="6,0" Margin="0,0,2,0" />
+                <Button Content="▼" Command="{Binding FindNextCommand}" ToolTip="Next match (F3 / Enter)" Padding="6,0" Margin="0" />
+                <TextBlock Text="{Binding SearchStatus}" VerticalAlignment="Center" Margin="10,0" Foreground="#555" />
+                <Button Content="✕" Style="{StaticResource FlatButton}" Click="OnCloseSearch" ToolTip="Close (Esc)" />
+            </StackPanel>
+        </Border>
+
         <!-- Text view or hex view (Ctrl+H switches); they share the selection -->
         <Grid>
             <controls:LogTextView x:Name="LogView" Document="{Binding Document}" WordWrap="{Binding WordWrap}"
-                                  IsPinned="{Binding IsPinned, Mode=TwoWay}" Selection="{Binding Selection}" />
+                                  IsPinned="{Binding IsPinned, Mode=TwoWay}" Selection="{Binding Selection}"
+                                  Search="{Binding ActiveSearch}" />
             <controls:HexView x:Name="HexView" Document="{Binding HexDocument}" BytesPerRow="{Binding HexBytesPerRow}"
-                              IsPinned="{Binding HexPinned, Mode=TwoWay}" Selection="{Binding Selection}" Visibility="Collapsed" />
+                              IsPinned="{Binding HexPinned, Mode=TwoWay}" Selection="{Binding Selection}"
+                              Search="{Binding ActiveSearch}" Visibility="Collapsed" />
         </Grid>
     </DockPanel>
 </Window>

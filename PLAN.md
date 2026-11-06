@@ -216,8 +216,12 @@ added as another data source without touching the views.
 ### Send box
 - Modes: Text (ASCII default), Hex (strict), Escaped — see behaviour spec.
 - Line ending append: None / CR / LF / CRLF (Text and Escaped).
-- Up/down history (persisted).
-- Macro bar: named buttons, each with payload + mode; edit dialog; persisted.
+- History (persisted, newest first, de-duplicated; each entry keeps its mode and line
+  ending). Up/Down in the send box walks it; the "▾ Recent" dropdown (Alt+Down / F4)
+  lists it with one-click "Send ▶" (resend without touching the box), click / Shift+Enter
+  to load for editing, ☆ to save as a macro, Del to remove.
+- Macro bar: named buttons, each with payload + mode + line ending; edit dialog
+  (right-click: edit / move / delete); Ctrl+1..9 send the first nine; persisted.
 - Send file (raw), with optional inter-chunk delay, progress, and cancel.
 - Warning shown if XON/XOFF flow control is on and the payload contains 0x11 or 0x13.
   (With XON/XOFF on, the driver also strips those bytes from RX — say so in the
@@ -278,7 +282,7 @@ SerialTool.slnx
    inline events, wrap toggle), send box. Throughput benchmark with FakeSource.
 3. **Grouping modes**: delimiter / idle-gap projections, TX-interleave setting, settings UI.
 4. **Hex view**: virtualized control, color coding, text/hex switch, shared selection.
-5. **Macros, history, search, copy formats.**
+5. **Macros, history (+ recent-sends dropdown), search, copy formats, send file.**
 6. **Logging / export / session reopen.**
 7. **Polish**: dark/light theme, settings persistence,
    unplug/auto-reconnect, release publish profile: `SelfContained=false`,

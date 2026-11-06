@@ -72,8 +72,21 @@ public sealed class NotEmptyToVisibilityConverter : IValueConverter
 
 public sealed class NonZeroToVisibilityConverter : IValueConverter
 {
+    /// <summary>Visible when the value IS zero instead.</summary>
+    public bool Invert { get; set; }
+
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture) =>
-        value is int n && n != 0 ? Visibility.Visible : Visibility.Collapsed;
+        (value is int n && n != 0) != Invert ? Visibility.Visible : Visibility.Collapsed;
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
+        DependencyProperty.UnsetValue;
+}
+
+/// <summary>Tooltip for a macro button: its data plus mode / line-ending tag.</summary>
+public sealed class MacroTipConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture) =>
+        value is Core.Text.Macro m ? (m.Item.Tag.Length > 0 ? $"{m.Text}    [{m.Item.Tag}]" : m.Text) : "";
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
         DependencyProperty.UnsetValue;

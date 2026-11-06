@@ -28,6 +28,15 @@ public abstract class LogViewBase : Grid
         nameof(Selection), typeof(ByteSelection), typeof(LogViewBase),
         new PropertyMetadata(null, (d, e) => ((LogViewBase)d).OnSelectionObjectChanged((ByteSelection?)e.OldValue, (ByteSelection?)e.NewValue)));
 
+    public static readonly DependencyProperty SearchProperty = DependencyProperty.Register(
+        nameof(Search), typeof(ByteSearch), typeof(LogViewBase),
+        new PropertyMetadata(null, (d, e) =>
+        {
+            var v = (LogViewBase)d;
+            v.Surface.Search = (ByteSearch?)e.NewValue;
+            v.Surface.InvalidateVisual();
+        }));
+
     private readonly ScrollBar _vbar = new() { Orientation = Orientation.Vertical };
     private readonly ScrollBar _hbar = new() { Orientation = Orientation.Horizontal };
     private readonly DispatcherTimer _dragTimer;
@@ -63,6 +72,85 @@ public abstract class LogViewBase : Grid
 
         _dragTimer = new DispatcherTimer(DispatcherPriority.Input) { Interval = TimeSpan.FromMilliseconds(50) };
         _dragTimer.Tick += (_, _) => DragAutoScroll();
+        ContextMenu = BuildContextMenu();
+    }
+
+    private ContextMenu BuildContextMenu()
+    {
+        var menu = new ContextMenu();
+        MenuItem Item(string header, Action action, string? gesture = null)
+        {
+            var mi = new MenuItem { Header = header, InputGestureText = gesture ?? "" };
+            mi.Click += (_, _) => action();
+            return mi;
+        }
+        var copy = Item("_Copy", CopySelection, "Ctrl+C");
+        var copyAs = new MenuItem { Header = "Copy _as" };
+        copyAs.Items.Add(Item("_Text", () => _ = CopyAsAsync(CopyFormat.Text)));
+        copyAs.Items.Add(Item("_Hex string", () => _ = CopyAsAsync(CopyFormat.Hex)));
+        copyAs.Items.Add(Item("_C array", () => _ = CopyAsAsync(CopyFormat.CArray)));
+        copyAs.Items.Add(Item("_Base64", () => _ = CopyAsAsync(CopyFormat.Base64)));
+        menu.Items.Add(copy);
+        menu.Items.Add(copyAs);
+        menu.Items.Add(new Separator());
+        menu.Items.Add(Item("Select _all", SelectAll, "Ctrl+A"));
+        menu.Opened += (_, _) =>
+        {
+            bool any = Selection is { IsEmpty: false };
+            copy.IsEnabled = any;
+            copyAs.IsEnabled = any;
+        };
+        return menu;
+    }
+
+    /// <summary>Above this many bytes, copying asks first (and runs off the UI thread).</summary>
+    private const long LargeCopyBytes = 8L * 1024 * 1024;
+
+    /// <summary>
+    /// Copies the selection's raw bytes in a format. Text copies what the view shows (as <see cref="CopySelection"/>
+    /// in the text view); the byte formats include every displayed RX/TX byte in the range, in stream order.
+    /// </summary>
+    public async Task CopyAsAsync(CopyFormat format)
+    {
+        var doc = Document;
+        var sel = Selection;
+        if (doc is null || sel is null || sel.IsEmpty) return;
+        if (format == CopyFormat.Text && this is LogTextView)
+        {
+            CopySelection();
+            return;
+        }
+
+        var store = doc.Store;
+        var (start, end) = (sel.Start, sel.End);
+        bool includeTx = doc.Options.ShowTx;
+        var encoding = doc.Encoding;
+        long size = CopyFormats.Measure(store, start, end, includeTx);
+        if (size == 0) return;
+        if (size > LargeCopyBytes)
+        {
+            var answer = MessageBox.Show(Window.GetWindow(this),
+                $"The selection is {size / 1048576.0:0.0} MB. Copying it may take a moment and use a lot of memory. Continue?",
+                "Copy", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
+            if (answer != MessageBoxResult.OK) return;
+        }
+
+        var prevCursor = Cursor;
+        Cursor = Cursors.Wait;
+        try
+        {
+            string text = await Task.Run(() =>
+            {
+                var bytes = CopyFormats.Gather(store, start, end, includeTx, MaxCopyChars, out _);
+                return CopyFormats.Format(bytes, format, encoding);
+            });
+            try { Clipboard.SetText(text); }
+            catch (System.Runtime.InteropServices.COMException) { }
+        }
+        finally
+        {
+            Cursor = prevCursor;
+        }
     }
 
     private protected ViewSurface Surface { get; }
@@ -86,6 +174,16 @@ public abstract class LogViewBase : Grid
         get => (ByteSelection?)GetValue(SelectionProperty);
         set => SetValue(SelectionProperty, value);
     }
+
+    /// <summary>Search whose matches are highlighted (null for none).</summary>
+    public ByteSearch? Search
+    {
+        get => (ByteSearch?)GetValue(SearchProperty);
+        set => SetValue(SearchProperty, value);
+    }
+
+    /// <summary>Redraws without changing the scroll position (e.g. search highlights changed).</summary>
+    public void InvalidateContent() => Surface.InvalidateVisual();
 
     /// <summary>Duration of the last render pass (for the benchmark).</summary>
     public double LastRenderMs => Surface.LastRenderMs;

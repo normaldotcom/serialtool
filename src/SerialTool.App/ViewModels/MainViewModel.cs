@@ -23,14 +23,12 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public static readonly SendMode[] SendModes = Enum.GetValues<SendMode>();
     public static readonly LineEnding[] LineEndings = Enum.GetValues<LineEnding>();
 
-    private const int MaxHistory = 200;
-
     private readonly Dispatcher _dispatcher;
     private readonly DispatcherTimer _tick;
     private readonly HotPlugWatcher? _watcher;
-    private readonly List<string> _history = [];
-    private int _historyIndex = -1;
-    private string? _historyDraft;
+    private readonly AppSettings _settings;
+    private bool _settingsDirty;
+    private DateTime _settingsDirtySince;
 
     private IDataSource? _source;
     private string? _lastPortName;
@@ -43,6 +41,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         Store = new EventStore();
         Pipeline = new CapturePipeline(Store);
         Document = new TextDocument(Store, Pipeline.Clock);
+        _settings = AppSettings.Load(SettingsPath);
+        LoadSettings();
 
         try
         {
@@ -389,7 +389,11 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             };
         }
     }
-    partial void OnShowTxChanged(bool value) => SetProjection(Document.Options with { ShowTx = value });
+    partial void OnShowTxChanged(bool value)
+    {
+        SetProjection(Document.Options with { ShowTx = value });
+        RestartSearch();
+    }
     partial void OnShowEventsChanged(bool value) => SetProjection(Document.Options with { ShowEvents = value });
     partial void OnIsPausedChanged(bool value) => OnPropertyChanged(nameof(PauseText));
 
@@ -471,6 +475,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     partial void OnSendTextChanged(string value)
     {
+        if (!_navigating) History.ResetNavigation();
         SendError = null;
         SendErrorRange = null;
     }
@@ -482,80 +487,6 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     }
 
     public bool LineEndingEnabled => SendMode != SendMode.Hex;
-
-    [RelayCommand(CanExecute = nameof(IsConnected))]
-    private async Task Send()
-    {
-        var source = _source;
-        if (source is null) return;
-
-        var result = SendTextParser.Parse(SendText, SendMode, LineEnding, Encoding);
-        if (!result.Success)
-        {
-            SendError = result.Error;
-            SendErrorRange = (result.ErrorPosition, result.ErrorLength);
-            SendErrorRaised?.Invoke(this, EventArgs.Empty);
-            return;
-        }
-        if (result.Data!.Length == 0) return;
-
-        AddHistory(SendText);
-        SendText = string.Empty;
-        try
-        {
-            await source.SendAsync(result.Data);
-        }
-        catch (OperationCanceledException)
-        {
-            StateDetail = "Send cancelled";
-        }
-        catch (SerialPortException ex)
-        {
-            StateDetail = ex.Message;
-        }
-        catch (Exception ex)
-        {
-            StateDetail = $"Send failed: {ex.Message}";
-        }
-    }
-
-    [RelayCommand]
-    private void CancelSends() => (_source as SerialSource)?.CancelPendingWrites();
-
-    private void AddHistory(string text)
-    {
-        if (string.IsNullOrEmpty(text)) return;
-        if (_history.Count == 0 || _history[^1] != text) _history.Add(text);
-        if (_history.Count > MaxHistory) _history.RemoveAt(0);
-        _historyIndex = -1;
-        _historyDraft = null;
-    }
-
-    /// <summary>Moves through send history (-1 = older, +1 = newer). Returns false if nothing changed.</summary>
-    public bool NavigateHistory(int direction)
-    {
-        if (_history.Count == 0) return false;
-        if (_historyIndex == -1)
-        {
-            if (direction > 0) return false;
-            _historyDraft = SendText;
-            _historyIndex = _history.Count - 1;
-        }
-        else
-        {
-            int next = _historyIndex + direction;
-            if (next < 0) return false;
-            if (next >= _history.Count)
-            {
-                _historyIndex = -1;
-                SendText = _historyDraft ?? string.Empty;
-                return true;
-            }
-            _historyIndex = next;
-        }
-        SendText = _history[_historyIndex];
-        return true;
-    }
 
     // ================================================================== status bar
 
@@ -578,6 +509,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             Document.Update();
             _continuousDoc?.Update();
         }
+        ScanSearch();
+        SaveSettingsIfDirty();
         double updateMs = System.Diagnostics.Stopwatch.GetElapsedTime(t0).TotalMilliseconds;
 
         PendingWrites = (_source as SerialSource)?.PendingWrites ?? 0;
@@ -612,6 +545,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public void Dispose()
     {
         _tick.Stop();
+        SaveSettingsIfDirty(force: true);
         _watcher?.Dispose();
         var s = _source;
         _source = null;

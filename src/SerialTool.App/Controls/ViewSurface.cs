@@ -31,6 +31,7 @@ internal abstract class ViewSurface : FrameworkElement
 
     public TextDocument? Document { get; set; }
     public ByteSelection? Selection { get; set; }
+    public ByteSearch? Search { get; set; }
     public ViewPalette Palette { get; set; } = ViewPalette.Light;
 
     public long TopLine { get; set; }
@@ -92,6 +93,30 @@ internal abstract class ViewSurface : FrameworkElement
         if (!info.IsData) return sel.Contains(start) ? (0, 1) : (0, 0);
         return (doc.IndexOf(line, sel.Start), doc.IndexOf(line, sel.End));
     }
+
+    /// <summary>
+    /// Line-local byte ranges [From, To) of search matches in a data line (appended to <paramref name="output"/>).
+    /// </summary>
+    protected void SearchHits(TextDocument doc, long line, List<(int From, int To)> output)
+    {
+        output.Clear();
+        var search = Search;
+        var info = doc.GetLine(line);
+        if (search is null || !info.IsData || search.Count == 0) return;
+        var matches = search.MatchesFor(info.Direction);
+        if (matches.Count == 0) return;
+        var start = LineBytes.StartOf(info);
+        int i = ByteSearch.FirstEndingAfter(matches, start);
+        if (i >= matches.Count) return;
+        var end = doc.LineEnd(line);
+        for (; i < matches.Count && matches[i].Start < end; i++)
+        {
+            int from = doc.IndexOf(line, matches[i].Start), to = doc.IndexOf(line, matches[i].End);
+            if (to > from) output.Add((from, to));
+        }
+    }
+
+    protected readonly List<(int From, int To)> HitBuffer = [];
 
     protected (Brush Normal, Brush Control) BrushesFor(TextDocument doc, long line, in DisplayLine info)
     {

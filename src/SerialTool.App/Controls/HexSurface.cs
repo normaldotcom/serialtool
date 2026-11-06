@@ -128,6 +128,7 @@ internal sealed class HexSurface : ViewSurface
             }
 
             byte[] bytes = doc.GetBytes(line);
+            SearchHits(doc, line, HitBuffer);
             int rows = Math.Max(1, (bytes.Length + n - 1) / n);
             int firstRow = line == TopLine ? Math.Min(TopRow, rows - 1) : 0;
             bool tx = info.Direction == Direction.Tx;
@@ -143,15 +144,8 @@ internal sealed class HexSurface : ViewSurface
 
                 dc.PushClip(clip);
 
-                int sa = Math.Max(selFrom, b0), sb = Math.Min(selTo, b1);
-                if (sb > sa)
-                {
-                    double hx0 = scrollX + HexColumn(sa - b0) * cw;
-                    double hx1 = scrollX + (HexColumn(sb - 1 - b0) + 2) * cw;
-                    dc.DrawRectangle(Palette.Selection, null, new Rect(hx0, y, hx1 - hx0, LineHeight));
-                    dc.DrawRectangle(Palette.Selection, null,
-                        new Rect(scrollX + (AsciiStart + sa - b0) * cw, y, (sb - sa) * cw, LineHeight));
-                }
+                foreach (var (hFrom, hTo) in HitBuffer) HighlightBytes(dc, Palette.SearchHit, hFrom, hTo, b0, b1, scrollX, y);
+                HighlightBytes(dc, Palette.Selection, selFrom, selTo, b0, b1, scrollX, y);
 
                 // Offset (within the line)
                 string offset = b0.ToString(offsetFormat);
@@ -180,6 +174,18 @@ internal sealed class HexSurface : ViewSurface
         }
 
         LastRenderMs = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+    }
+
+    /// <summary>Highlights line bytes [from, to) within the row [b0, b1) in both the hex and ASCII columns.</summary>
+    private void HighlightBytes(DrawingContext dc, Brush brush, int from, int to, int b0, int b1, double scrollX, double y)
+    {
+        int sa = Math.Max(from, b0), sb = Math.Min(to, b1);
+        if (sb <= sa) return;
+        double cw = CellWidth;
+        double hx0 = scrollX + HexColumn(sa - b0) * cw;
+        double hx1 = scrollX + (HexColumn(sb - 1 - b0) + 2) * cw;
+        dc.DrawRectangle(brush, null, new Rect(hx0, y, hx1 - hx0, LineHeight));
+        dc.DrawRectangle(brush, null, new Rect(scrollX + (AsciiStart + sa - b0) * cw, y, (sb - sa) * cw, LineHeight));
     }
 
     private Brush ClassBrush(byte v, Brush printable) => v switch

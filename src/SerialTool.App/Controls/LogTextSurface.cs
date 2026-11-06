@@ -116,6 +116,10 @@ internal sealed class LogTextSurface : ViewSurface
                 }
             }
 
+            SearchHits(doc, line, HitBuffer);
+            for (int h = 0; h < HitBuffer.Count; h++)
+                HitBuffer[h] = (CellAtByte(text, HitBuffer[h].From), CellAtByte(text, HitBuffer[h].To));
+
             int rows = Wrap ? Math.Max(1, (text.CellCount + columns - 1) / columns) : 1;
             int firstRow = line == TopLine ? Math.Min(TopRow, rows - 1) : 0;
 
@@ -127,6 +131,14 @@ internal sealed class LogTextSurface : ViewSurface
 
                 if (info.Direction == Direction.Tx && info.IsData)
                     dc.DrawRectangle(Palette.TxBackground, null, new Rect(0, y, ActualWidth, LineHeight));
+
+                foreach (var (hFrom, hTo) in HitBuffer)
+                {
+                    int a = Math.Max(hFrom, rowFrom), b = Math.Min(hTo, rowTo);
+                    if (b > a)
+                        dc.DrawRectangle(Palette.SearchHit, null,
+                            new Rect(textLeft + (a - rowFrom) * CellWidth, y, (b - a) * CellWidth, LineHeight));
+                }
 
                 if (selTo > selFrom || selPastEnd)
                 {

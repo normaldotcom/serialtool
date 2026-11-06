@@ -18,6 +18,7 @@ internal sealed class ViewPalette
         EventError = Brush(0xC6, 0x28, 0x28),
         TxBackground = Brush(0x0B, 0x5C, 0xAD, 0x0C),
         Selection = Brush(0x99, 0xC9, 0xEF, 0x90),
+        SearchHit = Brush(0xFF, 0xD8, 0x40, 0x90),
         HexZero = Brush(0xA8, 0xA8, 0xA8),
         HexFF = Brush(0xC0, 0x6A, 0x00),
         HexControl = Brush(0xB0, 0x30, 0x60),
@@ -36,6 +37,7 @@ internal sealed class ViewPalette
     public required Brush EventError { get; init; }
     public required Brush TxBackground { get; init; }
     public required Brush Selection { get; init; }
+    public required Brush SearchHit { get; init; }
 
     // Hex view byte classes (printable bytes use the Rx/Tx colors)
     public required Brush HexZero { get; init; }
