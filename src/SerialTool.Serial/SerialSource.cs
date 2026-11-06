@@ -556,6 +556,12 @@ public sealed class SerialSource : IDataSource
 
     public Task CloseAsync() => BeginClose("Closed", lost: false);
 
+    /// <summary>
+    /// Closes as if the connection was lost (posts "Connection lost: reason" and raises <see cref="Lost"/>). For when
+    /// the device is known to be gone but the driver has not failed the pending I/O (some USB drivers never do).
+    /// </summary>
+    public Task MarkLostAsync(string reason) => BeginClose(reason, lost: true);
+
     public async ValueTask DisposeAsync() => await CloseAsync().ConfigureAwait(false);
 
     /// <summary>Called from I/O threads; must not join the calling thread, so close runs on the pool.</summary>

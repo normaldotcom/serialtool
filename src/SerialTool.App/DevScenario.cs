@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls.Primitives;
@@ -18,13 +18,15 @@ internal static class DevScenario
     public static void AttachIfRequested(MainWindow window, MainViewModel vm)
     {
         string? scenario = Environment.GetEnvironmentVariable("SERIALTOOL_SCENARIO");
-        if (scenario is not ("send" or "log")) return;
+        if (scenario is not ("send" or "log" or "theme" or "reconnect")) return;
         window.Loaded += async (_, _) =>
         {
             var report = new StringBuilder();
             try
             {
                 if (scenario == "log") await RunLogAsync(window, vm, report);
+                else if (scenario == "theme") await RunThemeAsync(window, vm, report);
+                else if (scenario == "reconnect") await RunReconnectAsync(vm, report);
                 else await RunAsync(window, vm, report);
             }
             catch (Exception ex)
@@ -179,6 +181,106 @@ internal static class DevScenario
         File.WriteAllText(Path.Combine(logDir, "bad.stsession"), "nope");
         ok = await vm.OpenSessionAsync(Path.Combine(logDir, "bad.stsession"));
         report.AppendLine($"bad file ok={ok}: {vm.StateDetail}");
+    }
+
+    /// <summary>Snapshots the main window, the recent popup, the search bar and the dialogs in both themes.</summary>
+    private static async Task RunThemeAsync(MainWindow window, MainViewModel vm, StringBuilder report)
+    {
+        string dir = Environment.GetEnvironmentVariable("SERIALTOOL_SHOT") ?? Path.GetTempPath();
+        report.AppendLine($"restored: theme={vm.Theme} hex={vm.ShowHex} ts={vm.Timestamps} grouping={vm.Grouping} baud={vm.BaudRateText} " +
+                          $"port={vm.SelectedPort?.Name} window={window.Left},{window.Top} {window.Width}x{window.Height}");
+        vm.SelectedPort = vm.Ports.First(p => p.Name == "FAKE-ECHO");
+        await vm.ConnectAsync();
+        vm.Grouping = GroupingMode.Delimiter;
+        foreach (var t in new[] { "AT", "AT+GMR", "hello\tworld\x1b[0m" })
+        {
+            vm.SendMode = SendMode.Escaped;
+            vm.SendText = t;
+            await vm.SendCommand.ExecuteAsync(null);
+            await Task.Delay(100);
+        }
+        vm.SendMode = SendMode.Text;
+        vm.AddMacro(new Macro("Version", "AT+GMR"));
+        vm.IsSearchOpen = true;
+        vm.SearchText = "AT";
+        await Task.Delay(300);
+        vm.FindNextCommand.Execute(null);
+
+        foreach (var theme in new[] { AppTheme.Dark, AppTheme.Light })
+        {
+            vm.Theme = theme;
+            await Task.Delay(400);
+            string n = theme.ToString().ToLowerInvariant();
+            Benchmark.Snapshot(window, Path.Combine(dir, $"m7-{n}-main.png"));
+            vm.ShowHex = true;
+            await Task.Delay(300);
+            Benchmark.Snapshot(window, Path.Combine(dir, $"m7-{n}-hex.png"));
+            vm.ShowHex = false;
+            vm.IsRecentOpen = true;
+            await Task.Delay(400);
+            if (window.RecentPopup.Child is FrameworkElement popup) SnapshotElement(popup, Path.Combine(dir, $"m7-{n}-recent.png"));
+            vm.IsRecentOpen = false;
+
+            Window[] dialogs =
+            [
+                new LogWindow(vm),
+                new MacroWindow(new Macro("Reset", "AT+RST"), vm.Encoding, isNew: true),
+                new LineSettingsWindow(vm.Document.Options, _ => { }),
+            ];
+            foreach (var d in dialogs)
+            {
+                d.Owner = window;
+                d.Show();
+                await Task.Delay(500);
+                Benchmark.Snapshot(d, Path.Combine(dir, $"m7-{n}-{d.GetType().Name}.png"));
+                if (d.Content is FrameworkElement root)
+                    report.AppendLine($"{n} {d.GetType().Name}: window {d.ActualWidth:0}x{d.ActualHeight:0}, content {root.ActualWidth:0}x{root.ActualHeight:0}, desired {root.DesiredSize.Width:0}x{root.DesiredSize.Height:0}");
+                d.Close();
+            }
+        }
+        vm.Theme = AppTheme.Dark; // left for the restore check on the next run
+        vm.ShowHex = true;
+        vm.Timestamps = TimestampMode.Delta;
+        report.AppendLine("ok");
+    }
+
+    /// <summary>
+    /// Auto-reconnect against a real port (SERIALTOOL_PORT, e.g. one end of a com0com pair): simulates a lost
+    /// connection while the port stays present, so the device "comes back" at once.
+    /// </summary>
+    private static async Task RunReconnectAsync(MainViewModel vm, StringBuilder report)
+    {
+        string name = Environment.GetEnvironmentVariable("SERIALTOOL_PORT") ?? "COM4";
+        vm.AutoReconnect = true;
+        vm.SelectedPort = vm.Ports.First(p => p.Name == name);
+        await vm.ConnectAsync();
+        report.AppendLine($"connected: {vm.State}");
+        vm.SendText = "before";
+        await vm.SendCommand.ExecuteAsync(null);
+        await Task.Delay(200);
+        long eventsBefore = vm.Store.Count;
+
+        var source = (Serial.SerialSource)typeof(MainViewModel)
+            .GetField("_source", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(vm)!;
+        await source.MarkLostAsync("simulated unplug");
+        await Task.Delay(300);
+        report.AppendLine($"after loss: state={vm.State} waiting={vm.IsWaitingForDevice} text='{vm.StateText}' button='{vm.ConnectButtonText}' detail='{vm.StateDetail}'");
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        while (!vm.IsConnected && sw.ElapsedMilliseconds < 8000) await Task.Delay(50);
+        report.AppendLine($"reconnected={vm.IsConnected} after {sw.ElapsedMilliseconds} ms, detail='{vm.StateDetail}', events kept={vm.Store.Count >= eventsBefore}");
+        await Task.Delay(200);
+        var lines = Enumerable.Range(0, (int)vm.Document.LineCount).Select(i => vm.Document.FirstLine + i)
+            .Select(l => vm.Document.GetText(l).Text).ToList();
+        report.AppendLine("buffer:" + Environment.NewLine + "  " + string.Join(Environment.NewLine + "  ", lines));
+
+        // Stop waiting: lose again, then cancel before it comes back.
+        source = (Serial.SerialSource)typeof(MainViewModel)
+            .GetField("_source", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(vm)!;
+        await source.MarkLostAsync("simulated unplug 2");
+        await Task.Delay(100);
+        await vm.ToggleConnectionCommand.ExecuteAsync(null);
+        await Task.Delay(1500);
+        report.AppendLine($"after stop waiting: state={vm.State} waiting={vm.IsWaitingForDevice} button='{vm.ConnectButtonText}'");
     }
 
     private static void SnapshotElement(FrameworkElement el, string path)

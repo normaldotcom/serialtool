@@ -7,7 +7,7 @@ using SerialTool.Serial;
 
 namespace SerialTool.App.ViewModels;
 
-// Sending (box, history/recent, macros, files), search and settings persistence.
+// Sending (box, history/recent, macros, files) and search.
 public sealed partial class MainViewModel
 {
     // ================================================================== sending
@@ -154,7 +154,6 @@ public sealed partial class MainViewModel
 
     [ObservableProperty] private bool _showMacroBar = true;
 
-    partial void OnShowMacroBarChanged(bool value) => MarkSettingsDirty();
 
     public void AddMacro(Macro m) => Macros.Add(m);
 
@@ -260,6 +259,8 @@ public sealed partial class MainViewModel
     /// <summary>The running search (null when the bar is closed or the pattern is empty/invalid).</summary>
     [ObservableProperty] private ByteSearch? _activeSearch;
 
+    partial void OnActiveSearchChanged(ByteSearch? value) => Wake(); // scan it at the fast tick
+
     /// <summary>Raised when the match set changes (views redraw highlights).</summary>
     public event EventHandler? SearchUpdated;
 
@@ -329,41 +330,5 @@ public sealed partial class MainViewModel
         }
         UpdateSearchStatus();
         SearchUpdated?.Invoke(this, EventArgs.Empty);
-    }
-
-    // ================================================================== settings
-
-    private static string? SettingsPath => Environment.GetEnvironmentVariable("SERIALTOOL_SETTINGS");
-
-    private void LoadSettings()
-    {
-        History.Load(_settings.History);
-        foreach (var m in _settings.Macros) Macros.Add(m);
-        ShowMacroBar = _settings.ShowMacroBar;
-        SyncRecent();
-        History.Changed += (_, _) =>
-        {
-            SyncRecent();
-            MarkSettingsDirty();
-        };
-        Macros.CollectionChanged += (_, _) => MarkSettingsDirty();
-        _settingsDirty = false;
-    }
-
-    private void MarkSettingsDirty()
-    {
-        if (!_settingsDirty) _settingsDirtySince = DateTime.UtcNow;
-        _settingsDirty = true;
-    }
-
-    /// <summary>Saves (at most every couple of seconds) so history survives a crash. Last writer wins.</summary>
-    private void SaveSettingsIfDirty(bool force = false)
-    {
-        if (!_settingsDirty || (!force && DateTime.UtcNow - _settingsDirtySince < TimeSpan.FromSeconds(2))) return;
-        _settingsDirty = false;
-        _settings.History = [.. History.Items];
-        _settings.Macros = [.. Macros];
-        _settings.ShowMacroBar = ShowMacroBar;
-        _settings.Save(SettingsPath);
     }
 }

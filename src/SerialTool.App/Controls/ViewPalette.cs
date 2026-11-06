@@ -1,8 +1,9 @@
+using System.Reflection;
 using System.Windows.Media;
 
 namespace SerialTool.App.Controls;
 
-/// <summary>Colors for the text and hex views. Light theme for now; themes come in milestone 7.</summary>
+/// <summary>Colors for the text and hex views. <see cref="Current"/> is what the views draw with.</summary>
 internal sealed class ViewPalette
 {
     public static readonly ViewPalette Light = new()
@@ -26,6 +27,43 @@ internal sealed class ViewPalette
         HexOffset = Brush(0x9A, 0x9A, 0x9A),
     };
 
+    public static readonly ViewPalette Dark = new()
+    {
+        Background = Brush(0x1A, 0x1A, 0x1A),
+        Rx = Brush(0xD8, 0xD8, 0xD8),
+        Tx = Brush(0x5C, 0xB4, 0xFF),
+        RxControl = Brush(0xD8, 0xD8, 0xD8, 0x68),
+        TxControl = Brush(0x5C, 0xB4, 0xFF, 0x78),
+        Timestamp = Brush(0x7A, 0x7A, 0x7A),
+        EventInfo = Brush(0x3F, 0xC8, 0xC8),
+        EventPin = Brush(0xC0, 0x8C, 0xF0),
+        EventError = Brush(0xFF, 0x6B, 0x6B),
+        TxBackground = Brush(0x5C, 0xB4, 0xFF, 0x12),
+        Selection = Brush(0x26, 0x6F, 0xB8, 0xA0),
+        SearchHit = Brush(0xC8, 0x9B, 0x00, 0x90),
+        HexZero = Brush(0x66, 0x66, 0x66),
+        HexFF = Brush(0xE8, 0x9A, 0x3C),
+        HexControl = Brush(0xE8, 0x6E, 0x9A),
+        HexHigh = Brush(0xC0, 0x8C, 0xF0),
+        HexOffset = Brush(0x70, 0x70, 0x70),
+    };
+
+    private static ViewPalette _current = Light;
+
+    /// <summary>The palette the views draw with.</summary>
+    public static ViewPalette Current
+    {
+        get => _current;
+        set
+        {
+            if (ReferenceEquals(value, _current)) return;
+            _current = value;
+            CurrentChanged?.Invoke(null, EventArgs.Empty);
+        }
+    }
+
+    public static event EventHandler? CurrentChanged;
+
     public required Brush Background { get; init; }
     public required Brush Rx { get; init; }
     public required Brush Tx { get; init; }
@@ -45,6 +83,40 @@ internal sealed class ViewPalette
     public required Brush HexControl { get; init; }
     public required Brush HexHigh { get; init; }
     public required Brush HexOffset { get; init; }
+
+    private static readonly PropertyInfo[] BrushProperties =
+        typeof(ViewPalette).GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(p => p.PropertyType == typeof(Brush)).ToArray();
+
+    /// <summary>Property names that can be overridden (for docs / error messages).</summary>
+    public static IEnumerable<string> ColorNames => BrushProperties.Select(p => p.Name);
+
+    /// <summary>
+    /// A copy with some colors replaced, from settings ("Tx": "#4FC1FF" or "#804FC1FF" with alpha). Unknown names and
+    /// unparsable colors are ignored. Returns this palette unchanged if there is nothing to apply.
+    /// </summary>
+    public ViewPalette With(IReadOnlyDictionary<string, string>? overrides)
+    {
+        if (overrides is null || overrides.Count == 0) return this;
+        var copy = (ViewPalette)MemberwiseClone();
+        bool any = false;
+        foreach (var (name, value) in overrides)
+        {
+            var prop = BrushProperties.FirstOrDefault(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase));
+            if (prop is null) continue;
+            try
+            {
+                var color = (Color)ColorConverter.ConvertFromString(value);
+                var br = new SolidColorBrush(color);
+                br.Freeze();
+                prop.SetValue(copy, br);
+                any = true;
+            }
+            catch (Exception ex) when (ex is FormatException or NotSupportedException)
+            {
+            }
+        }
+        return any ? copy : this;
+    }
 
     private static SolidColorBrush Brush(byte r, byte g, byte b, byte a = 0xFF)
     {

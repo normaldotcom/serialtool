@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -62,6 +62,7 @@ public abstract class LogViewBase : Grid
         Focusable = true;
         FocusVisualStyle = null;
         Background = System.Windows.Media.Brushes.Transparent;
+        ViewPalette.CurrentChanged += (_, _) => Surface.InvalidateVisual(); // views live as long as the app
         Cursor = Cursors.IBeam;
         _vbar.Cursor = Cursors.Arrow;
         _hbar.Cursor = Cursors.Arrow;

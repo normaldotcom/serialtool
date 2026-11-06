@@ -32,7 +32,7 @@ internal abstract class ViewSurface : FrameworkElement
     public TextDocument? Document { get; set; }
     public ByteSelection? Selection { get; set; }
     public ByteSearch? Search { get; set; }
-    public ViewPalette Palette { get; set; } = ViewPalette.Light;
+    public static ViewPalette Palette => ViewPalette.Current;
 
     public long TopLine { get; set; }
     public int TopRow { get; set; }

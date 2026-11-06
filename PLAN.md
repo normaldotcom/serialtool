@@ -300,6 +300,14 @@ SerialTool.slnx
    unplug/auto-reconnect, release publish profile: `SelfContained=false`,
    `PublishSingleFile=true`, `RuntimeIdentifier=win-x64`, `SatelliteResourceLanguages=en`,
    no trimming (WPF doesn't support it).
+   - Done: theme = WPF Fluent `ThemeMode` (Light/Dark; "System" follows the Windows app theme
+     live) + the app's own color dictionaries (`Themes/*.xaml`) + a dark view palette; per-theme
+     view color overrides in settings. Settings now hold last port, per-port serial config and
+     DTR/RTS, view options, theme, window placement (schema version 1). Auto-reconnect matches on
+     `PortInfo.MatchKey` (USB serial → USB instance → name), falls back to the COM name, retries
+     with backoff while present-but-unopenable, keeps buffer + log; a connected port missing from
+     enumeration (re-checked after 500 ms) is treated as unplugged; resume re-checks ports.
+     UI tick slows to 250 ms when idle. README written.
 8. **Spy mode research spike** (filter driver vs. virtual-port proxy vs. USBPcap).
 
 ## Risks / notes

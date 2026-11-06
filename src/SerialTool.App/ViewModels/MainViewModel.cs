@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Threading;
@@ -44,19 +44,21 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _settings = AppSettings.Load(SettingsPath);
         LoadSettings();
         Pipeline.EventCaptured += OnEventCaptured;
+        Pipeline.EventCaptured += WakeTick;
 
         try
         {
             _watcher = new HotPlugWatcher();
-            _watcher.PortsChanged += (_, _) => _dispatcher.BeginInvoke(RefreshPorts);
+            _watcher.PortsChanged += (_, _) => _dispatcher.BeginInvoke(OnPortsChanged);
         }
         catch
         {
             // hot-plug is a convenience; the refresh button still works
         }
         RefreshPorts();
+        Microsoft.Win32.SystemEvents.PowerModeChanged += OnPowerModeChanged;
 
-        _tick = new DispatcherTimer(DispatcherPriority.Normal, _dispatcher) { Interval = TimeSpan.FromMilliseconds(30) };
+        _tick = new DispatcherTimer(DispatcherPriority.Normal, _dispatcher) { Interval = FastTick };
         _tick.Tick += (_, _) => OnTick();
         _tick.Start();
     }
@@ -92,7 +94,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private bool _rtsOnOpen;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsConnected), nameof(IsDisconnected), nameof(ConnectButtonText), nameof(StateText),
+    [NotifyPropertyChangedFor(nameof(IsConnected), nameof(IsDisconnected), nameof(ConnectButtonText), nameof(StateText), nameof(IsWaitingForDevice),
         nameof(CanToggleRts), nameof(CanToggleDtr), nameof(Title), nameof(IsSerial))]
     [NotifyCanExecuteChangedFor(nameof(ToggleConnectionCommand), nameof(SendCommand))]
     private ConnectionState _state = ConnectionState.Disconnected;
@@ -105,6 +107,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public string ConnectButtonText => State switch
     {
         ConnectionState.Connected => "Disconnect",
+        _ when IsWaitingForDevice => "Stop waiting",
         ConnectionState.Connecting => "Connecting…",
         _ => "Connect",
     };
@@ -113,6 +116,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     {
         ConnectionState.Connected => $"Connected {_source?.Name}",
         ConnectionState.Connecting => "Connecting…",
+        ConnectionState.Lost when IsWaitingForDevice => $"Waiting for {_lostPortName}…",
         ConnectionState.Lost => "Connection lost",
         _ => "Disconnected",
     };
@@ -143,11 +147,13 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void RefreshPorts()
     {
-        var current = SelectedPort?.Name;
+        var current = SelectedPort?.Name ?? _preferredPort;
         var items = new List<PortItem>();
+        bool enumerated = false;
         try
         {
             items.AddRange(PortEnumerator.GetPorts().Select(PortItem.FromPort));
+            enumerated = true;
         }
         catch (Exception ex)
         {
@@ -159,8 +165,47 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         foreach (var p in items) Ports.Add(p);
 
         // Keep the selection; while connected keep showing the open port even if it vanished.
-        SelectedPort = Ports.FirstOrDefault(p => p.Name == current)
+        SelectedPort = Ports.FirstOrDefault(p => string.Equals(p.Name, current, StringComparison.OrdinalIgnoreCase))
                        ?? (IsDisconnected ? Ports.FirstOrDefault() : SelectedPort);
+
+        // Some USB serial drivers never fail pending I/O when the device is unplugged: notice it here instead.
+        if (enumerated && IsConnected && _source is SerialSource open
+            && !items.Any(p => p.Name.Equals(open.PortName, StringComparison.OrdinalIgnoreCase)))
+            _ = ConfirmRemovedAsync(open);
+    }
+
+    private void OnPortsChanged()
+    {
+        RefreshPorts();
+        if (IsWaitingForDevice) _nextReconnect = DateTime.UtcNow.AddMilliseconds(300); // give the driver a moment
+    }
+
+    /// <summary>Re-checks after a short delay (enumeration can lag a plug event) before treating the port as gone.</summary>
+    private async Task ConfirmRemovedAsync(SerialSource source)
+    {
+        await Task.Delay(500);
+        if (!ReferenceEquals(_source, source)) return;
+        bool present;
+        try
+        {
+            present = PortEnumerator.GetPorts().Any(p => p.PortName.Equals(source.PortName, StringComparison.OrdinalIgnoreCase));
+        }
+        catch
+        {
+            return;
+        }
+        if (!present) await source.MarkLostAsync("device removed");
+    }
+
+    private void OnPowerModeChanged(object? sender, Microsoft.Win32.PowerModeChangedEventArgs e)
+    {
+        // After resume a USB adapter may have been re-enumerated (or unplugged while asleep): re-check the ports.
+        if (e.Mode == Microsoft.Win32.PowerModes.Resume)
+            _dispatcher.BeginInvoke(async () =>
+            {
+                await Task.Delay(2000);
+                OnPortsChanged();
+            });
     }
 
     public static bool FakePortsEnabled =>
@@ -184,13 +229,17 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private async Task ToggleConnection()
     {
         if (IsConnected) await DisconnectAsync();
+        else if (IsWaitingForDevice) StopWaitingForDevice();
         else await ConnectAsync();
     }
 
-    public async Task ConnectAsync()
+    /// <summary>Connects to the selected port.</summary>
+    /// <param name="sameDevice">Auto-reconnect: keep the buffer and log even if the device came back under another name.</param>
+    public async Task ConnectAsync(bool sameDevice = false)
     {
         var port = SelectedPort;
         if (port is null || !IsDisconnected) return;
+        if (!sameDevice) StopWaitingForDevice();
 
         SerialConfig config;
         try
@@ -204,7 +253,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
 
         // Same port: keep the buffer (one continuous session). Different port: start fresh.
-        bool portChanged = _lastPortName is not null && !string.Equals(_lastPortName, port.Name, StringComparison.OrdinalIgnoreCase);
+        bool portChanged = !sameDevice && _lastPortName is not null && !string.Equals(_lastPortName, port.Name, StringComparison.OrdinalIgnoreCase);
         if (portChanged)
         {
             await StopLogAsync(); // a log belongs to one port's session
@@ -252,6 +301,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     public async Task DisconnectAsync()
     {
+        StopWaitingForDevice();
         var source = _source;
         if (source is null) return;
         _source = null;
@@ -267,10 +317,85 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         if (!ReferenceEquals(sender, _source)) return;
         _source = null;
         ApplyPins(ModemPins.None);
+        if (AutoReconnect && sender is SerialSource lost)
+        {
+            // Remember the physical device, so it is found again even if Windows gives it another COM number.
+            var item = Ports.FirstOrDefault(p => p.Name.Equals(lost.PortName, StringComparison.OrdinalIgnoreCase));
+            _lostMatchKey = item is null ? $"port:{lost.PortName}" : MatchKeyOf(item);
+            _lostPortName = lost.PortName;
+            _reconnectAttempts = 0;
+            _nextReconnect = DateTime.UtcNow.AddSeconds(1);
+        }
         State = ConnectionState.Lost;
-        StateDetail = e.Reason;
+        StateDetail = IsWaitingForDevice ? $"{e.Reason} (will reconnect when it is back)" : e.Reason;
         RefreshPorts();
     });
+
+    // ------------------------------------------------------------------ auto-reconnect
+
+    private string? _lostMatchKey;
+    private string? _lostPortName;
+    private DateTime _nextReconnect;
+    private int _reconnectAttempts;
+    private bool _reconnecting;
+
+    /// <summary>True after an unexpected disconnect while auto-reconnect is waiting for the device.</summary>
+    public bool IsWaitingForDevice => _lostMatchKey is not null;
+
+    private void StopWaitingForDevice()
+    {
+        if (_lostMatchKey is null) return;
+        _lostMatchKey = null;
+        if (State == ConnectionState.Lost) State = ConnectionState.Disconnected;
+        OnPropertyChanged(nameof(IsWaitingForDevice));
+        OnPropertyChanged(nameof(ConnectButtonText));
+        OnPropertyChanged(nameof(StateText));
+    }
+
+    private static string MatchKeyOf(PortItem p) => p.Info?.MatchKey ?? $"port:{p.Name}";
+
+    /// <summary>Called from the UI tick: reopens the lost device once it is present again.</summary>
+    private async void TickReconnect()
+    {
+        if (_lostMatchKey is null || _reconnecting || State != ConnectionState.Lost || DateTime.UtcNow < _nextReconnect) return;
+        _reconnecting = true;
+        try
+        {
+            if (_watcher is null) RefreshPorts(); // no hot-plug notifications: poll
+            string key = _lostMatchKey;
+            var port = Ports.FirstOrDefault(p => MatchKeyOf(p) == key)
+                       // A device without a serial number moved to another USB socket gets a new instance ID, but
+                       // Windows often keeps its COM name, so fall back to that.
+                       ?? Ports.FirstOrDefault(p => p.Name.Equals(_lostPortName, StringComparison.OrdinalIgnoreCase));
+            if (port is null)
+            {
+                _nextReconnect = DateTime.UtcNow.AddSeconds(2);
+                return;
+            }
+
+            SelectedPort = port;
+            await ConnectAsync(sameDevice: true);
+            if (IsConnected)
+            {
+                _lostMatchKey = null;
+                StateDetail = $"Reconnected to {port.Name}";
+                OnPropertyChanged(nameof(IsWaitingForDevice));
+                OnPropertyChanged(nameof(ConnectButtonText));
+                return;
+            }
+            if (_lostMatchKey != key) return; // the user stopped waiting meanwhile
+            // Present but not openable yet (driver still starting, or another program has it): keep trying, slower.
+            _reconnectAttempts++;
+            _nextReconnect = DateTime.UtcNow.AddSeconds(Math.Min(5, _reconnectAttempts));
+            string why = StateDetail ?? "";
+            State = ConnectionState.Lost;
+            StateDetail = $"Reconnect attempt {_reconnectAttempts} failed: {why}";
+        }
+        finally
+        {
+            _reconnecting = false;
+        }
+    }
 
     private void ApplyPins(ModemPins pins)
     {
@@ -410,12 +535,17 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         RestartSearch();
     }
     partial void OnShowEventsChanged(bool value) => SetProjection(Document.Options with { ShowEvents = value });
-    partial void OnIsPausedChanged(bool value) => OnPropertyChanged(nameof(PauseText));
+    partial void OnIsPausedChanged(bool value)
+    {
+        OnPropertyChanged(nameof(PauseText));
+        Wake(); // catch up promptly on resume
+    }
 
     public string PauseText => IsPaused ? "Resume" : "Pause";
 
     private void SetProjection(ProjectionOptions options)
     {
+        Wake();
         Document.Options = options;
         if (_continuousDoc is not null) _continuousDoc.Options = ContinuousOptions(options);
     }
@@ -511,6 +641,48 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string _bufferText = "";
     [ObservableProperty] private int _pendingWrites;
 
+    // The UI tick runs fast while data flows and slows down when idle (an idle window should cost ~nothing).
+    private static readonly TimeSpan FastTick = TimeSpan.FromMilliseconds(30);
+    private static readonly TimeSpan SlowTick = TimeSpan.FromMilliseconds(250);
+    private static readonly TimeSpan IdleAfter = TimeSpan.FromSeconds(1);
+    private long _eventsSeen;       // incremented on the capture thread
+    private long _eventsAtLastTick;
+    private DateTime _lastActivity = DateTime.UtcNow;
+    private int _tickSlow;          // 1 while the tick runs at SlowTick
+
+    /// <summary>Capture thread: switch back to the fast tick as soon as something arrives.</summary>
+    private void WakeTick(CaptureEvent e)
+    {
+        Interlocked.Increment(ref _eventsSeen);
+        if (Volatile.Read(ref _tickSlow) == 1 && Interlocked.Exchange(ref _tickSlow, 0) == 1)
+            _dispatcher.BeginInvoke(() =>
+            {
+                _tick.Interval = FastTick;
+                OnTick();
+            });
+    }
+
+    private void UpdateTickRate()
+    {
+        long seen = Interlocked.Read(ref _eventsSeen);
+        var now = DateTime.UtcNow;
+        bool busy = seen != _eventsAtLastTick || State == ConnectionState.Connecting || PendingWrites > 0
+                    || Document.IsRebuilding || _continuousDoc?.IsRebuilding == true || ActiveSearch is { IsCaughtUp: false };
+        _eventsAtLastTick = seen;
+        if (busy) _lastActivity = now;
+        bool slow = now - _lastActivity > IdleAfter;
+        if (slow == (_tickSlow == 1)) return;
+        Volatile.Write(ref _tickSlow, slow ? 1 : 0);
+        _tick.Interval = slow ? SlowTick : FastTick;
+    }
+
+    /// <summary>Call after a UI action that needs prompt ticks (e.g. a rebuild or search started).</summary>
+    private void Wake()
+    {
+        _lastActivity = DateTime.UtcNow;
+        if (Interlocked.Exchange(ref _tickSlow, 0) == 1) _tick.Interval = FastTick;
+    }
+
     private void OnTick()
     {
         long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -526,6 +698,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
         ScanSearch();
         TickLog();
+        TickReconnect();
         SaveSettingsIfDirty();
         double updateMs = System.Diagnostics.Stopwatch.GetElapsedTime(t0).TotalMilliseconds;
 
@@ -547,6 +720,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             BufferText = $"Buffer {Store.UsedBytes / 1048576.0:0.0} / {Store.CapBytes / 1048576.0:0} MB";
         }
 
+        UpdateTickRate();
         Ticked?.Invoke(updateMs);
     }
 
@@ -561,6 +735,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public void Dispose()
     {
         _tick.Stop();
+        Microsoft.Win32.SystemEvents.PowerModeChanged -= OnPowerModeChanged;
+        MarkSettingsDirty();
         SaveSettingsIfDirty(force: true);
         var log = Interlocked.Exchange(ref _log, null);
         _watcher?.Dispose();

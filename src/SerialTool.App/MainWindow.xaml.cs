@@ -14,14 +14,19 @@ public partial class MainWindow : Window
 
     public MainWindow()
     {
-        InitializeComponent();
         _vm = new MainViewModel();
+        // Before InitializeComponent: the window's styles are based on the theme's control styles.
+        ThemeManager.Apply(_vm.Theme, _vm.ColorOverrides);
+        InitializeComponent();
         DataContext = _vm;
+        RestorePlacement(_vm.WindowPlacement);
         _vm.SendErrorRaised += OnSendError;
         _vm.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(MainViewModel.ShowHex)) ApplyHexVisibility();
+            else if (e.PropertyName == nameof(MainViewModel.Theme)) ThemeManager.Apply(_vm.Theme, _vm.ColorOverrides);
         };
+        if (_vm.ShowHex) ApplyHexVisibility(); // restored from settings
         _vm.SearchUpdated += (_, _) =>
         {
             LogView.InvalidateContent();
@@ -36,7 +41,30 @@ public partial class MainWindow : Window
     protected override void OnClosing(CancelEventArgs e)
     {
         base.OnClosing(e);
+        var b = WindowState == WindowState.Normal ? new Rect(Left, Top, ActualWidth, ActualHeight) : RestoreBounds;
+        if (!b.IsEmpty && b.Width > 0 && b.Height > 0)
+            _vm.WindowPlacement = new WindowPlacement
+            {
+                Left = b.Left, Top = b.Top, Width = b.Width, Height = b.Height,
+                Maximized = WindowState == WindowState.Maximized,
+            };
         _vm.Dispose();
+    }
+
+    /// <summary>Puts the window where it was last time, if that is still on a screen.</summary>
+    private void RestorePlacement(WindowPlacement? p)
+    {
+        if (p is null || p.Width < MinWidth || p.Height < MinHeight) return;
+        var screen = new Rect(SystemParameters.VirtualScreenLeft, SystemParameters.VirtualScreenTop,
+            SystemParameters.VirtualScreenWidth, SystemParameters.VirtualScreenHeight);
+        var title = new Rect(p.Left, p.Top, p.Width, 40); // the title bar must be reachable
+        if (!screen.IntersectsWith(title)) return;
+        WindowStartupLocation = WindowStartupLocation.Manual;
+        Left = p.Left;
+        Top = p.Top;
+        Width = Math.Min(p.Width, screen.Width);
+        Height = Math.Min(p.Height, screen.Height);
+        if (p.Maximized) WindowState = WindowState.Maximized;
     }
 
     protected override void OnPreviewKeyDown(KeyEventArgs e)

@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.IO;
 using System.Text;
 using System.Windows;
@@ -168,14 +168,16 @@ internal static class Benchmark
     /// <summary>Renders the window's own content to a PNG (no screen capture).</summary>
     public static void Snapshot(Window window, string path)
     {
-        if (window.Content is not FrameworkElement root) return;
+        // The window's template root covers the whole client area (content margins included).
+        if (System.Windows.Media.VisualTreeHelper.GetChildrenCount(window) == 0
+            || System.Windows.Media.VisualTreeHelper.GetChild(window, 0) is not FrameworkElement root) return;
         var dpi = System.Windows.Media.VisualTreeHelper.GetDpi(window);
         var bmp = new System.Windows.Media.Imaging.RenderTargetBitmap(
             (int)(root.ActualWidth * dpi.DpiScaleX), (int)(root.ActualHeight * dpi.DpiScaleY),
             dpi.PixelsPerInchX, dpi.PixelsPerInchY, System.Windows.Media.PixelFormats.Pbgra32);
         var bg = new System.Windows.Media.DrawingVisual();
         using (var dc = bg.RenderOpen())
-            dc.DrawRectangle(System.Windows.Media.Brushes.White, null, new Rect(0, 0, root.ActualWidth, root.ActualHeight));
+            dc.DrawRectangle(window.Background ?? System.Windows.Media.Brushes.White, null, new Rect(0, 0, root.ActualWidth, root.ActualHeight));
         bmp.Render(bg);
         bmp.Render(root);
         var enc = new System.Windows.Media.Imaging.PngBitmapEncoder();
