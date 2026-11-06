@@ -64,6 +64,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public CapturePipeline Pipeline { get; }
     public TextDocument Document { get; }
 
+    /// <summary>Selection shared by the text and hex views (linked selection).</summary>
+    public ByteSelection Selection { get; } = new();
+
     /// <summary>Raised on every UI tick after the document update (benchmark hook).</summary>
     public event Action<double>? Ticked;
 
@@ -345,16 +348,20 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private bool _isPaused;
     [ObservableProperty] private bool _isPinned = true;
 
-    partial void OnTimestampsChanged(TimestampMode value) => Document.Timestamps = value;
+    partial void OnTimestampsChanged(TimestampMode value)
+    {
+        Document.Timestamps = value;
+        UpdateHexDocument();
+    }
     partial void OnEncodingChanged(TextEncodingKind value) => Document.Encoding = value;
     partial void OnControlCharsChanged(ControlCharMode value) => Document.ControlChars = value;
-    partial void OnNewlineChanged(NewlineMode value) => Document.Options = Document.Options with { Newline = value };
-    partial void OnGroupingChanged(GroupingMode value) => Document.Options = Document.Options with { Grouping = value };
+    partial void OnNewlineChanged(NewlineMode value) => SetProjection(Document.Options with { Newline = value });
+    partial void OnGroupingChanged(GroupingMode value) => SetProjection(Document.Options with { Grouping = value });
 
     /// <summary>Applies options from the Line Grouping dialog (one rebuild) and syncs the menu-bound properties.</summary>
     public void ApplyLineSettings(ProjectionOptions options)
     {
-        Document.Options = options;
+        SetProjection(options);
         Newline = options.Newline;   // no-ops on Document if already equal
         Grouping = options.Grouping;
         OnPropertyChanged(nameof(GroupingText));
@@ -382,17 +389,69 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             };
         }
     }
-    partial void OnShowTxChanged(bool value) => Document.Options = Document.Options with { ShowTx = value };
-    partial void OnShowEventsChanged(bool value) => Document.Options = Document.Options with { ShowEvents = value };
+    partial void OnShowTxChanged(bool value) => SetProjection(Document.Options with { ShowTx = value });
+    partial void OnShowEventsChanged(bool value) => SetProjection(Document.Options with { ShowEvents = value });
     partial void OnIsPausedChanged(bool value) => OnPropertyChanged(nameof(PauseText));
 
     public string PauseText => IsPaused ? "Resume" : "Pause";
+
+    private void SetProjection(ProjectionOptions options)
+    {
+        Document.Options = options;
+        if (_continuousDoc is not null) _continuousDoc.Options = ContinuousOptions(options);
+    }
 
     [RelayCommand]
     private void Clear()
     {
         Pipeline.Clear();
         Document.Update();
+        _continuousDoc?.Update();
+    }
+
+    // ================================================================== hex view
+
+    [ObservableProperty] private bool _showHex;
+    [ObservableProperty] private int _hexBytesPerRow = 16;
+    [ObservableProperty] private bool _hexPinned = true;
+
+    /// <summary>
+    /// What the hex view shows: with timestamps on, the text view's own lines (rows follow the grouping mode);
+    /// with timestamps off, a separate continuous projection (bytes flow at N per row). Null while hidden.
+    /// </summary>
+    [ObservableProperty] private TextDocument? _hexDocument;
+
+    private TextDocument? _continuousDoc;
+    private int _storeGeneration;
+
+    partial void OnShowHexChanged(bool value) => UpdateHexDocument();
+
+    [RelayCommand]
+    private void ToggleHex() => ShowHex = !ShowHex;
+
+    private static ProjectionOptions ContinuousOptions(ProjectionOptions o) =>
+        o with { Grouping = GroupingMode.Continuous, TxBreak = TxBreakMode.ForceBreak };
+
+    private void UpdateHexDocument()
+    {
+        if (!ShowHex)
+        {
+            HexDocument = null;
+            _continuousDoc = null; // free its line index
+            return;
+        }
+        if (Timestamps != TimestampMode.Off)
+        {
+            _continuousDoc = null;
+            HexDocument = Document;
+            return;
+        }
+        if (_continuousDoc is null)
+        {
+            _continuousDoc = new TextDocument(Store, Pipeline.Clock) { Timestamps = TimestampMode.Off };
+            _continuousDoc.Options = ContinuousOptions(Document.Options);
+        }
+        HexDocument = _continuousDoc;
     }
 
     [RelayCommand]
@@ -509,7 +568,16 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private void OnTick()
     {
         long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
-        if (!IsPaused) Document.Update();
+        if (Store.Generation != _storeGeneration)
+        {
+            _storeGeneration = Store.Generation;
+            Selection.Clear(); // positions refer to the old buffer
+        }
+        if (!IsPaused)
+        {
+            Document.Update();
+            _continuousDoc?.Update();
+        }
         double updateMs = System.Diagnostics.Stopwatch.GetElapsedTime(t0).TotalMilliseconds;
 
         PendingWrites = (_source as SerialSource)?.PendingWrites ?? 0;

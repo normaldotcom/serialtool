@@ -16,6 +16,7 @@ public sealed class TextDocument
     private readonly List<CaptureEvent> _batch = new(4096);
     private readonly List<byte> _scratch = new(256);
     private readonly Dictionary<long, (long Version, FormattedLine Text)> _cache = [];
+    private readonly Dictionary<long, (long Version, byte[] Bytes)> _byteCache = [];
 
     private LineProjection _projection;
     private ProjectionOptions _options = new();
@@ -93,7 +94,7 @@ public sealed class TextDocument
             _generation = _store.Generation;
             CancelRebuild();
             _projection = new LineProjection(_options);
-            _cache.Clear();
+            ClearCaches();
             changed = true;
         }
 
@@ -104,7 +105,7 @@ public sealed class TextDocument
             if (rebuilt is not null)
             {
                 _projection = rebuilt;
-                _cache.Clear();
+                ClearCaches();
                 changed = true;
             }
         }
@@ -159,6 +160,47 @@ public sealed class TextDocument
         return text;
     }
 
+    /// <summary>The raw bytes of a data line (empty for event lines). Cached; do not modify.</summary>
+    public byte[] GetBytes(long index)
+    {
+        var line = _projection[index];
+        if (!line.IsData) return [];
+        long version = index == _projection.NextLine - 1 ? _projection.LastLineVersion : -1;
+        if (_byteCache.TryGetValue(index, out var hit) && hit.Version == version) return hit.Bytes;
+        LineBytes.Copy(_store, line, _scratch);
+        byte[] bytes = [.. _scratch];
+        if (_byteCache.Count >= MaxCacheEntries / 4) _byteCache.Clear();
+        _byteCache[index] = (version, bytes);
+        return bytes;
+    }
+
+    /// <summary>Stream position of byte <paramref name="byteIndex"/> of line <paramref name="index"/> (0..Length).</summary>
+    public StreamPos PositionAt(long index, int byteIndex) => LineBytes.PositionAt(_store, _projection[index], byteIndex);
+
+    /// <summary>Number of bytes of line <paramref name="index"/> before <paramref name="pos"/>.</summary>
+    public int IndexOf(long index, StreamPos pos) => LineBytes.IndexOf(_store, _projection[index], pos);
+
+    public StreamPos LineStart(long index) => LineBytes.StartOf(_projection[index]);
+
+    public StreamPos LineEnd(long index) => LineBytes.EndOf(_store, _projection[index]);
+
+    /// <summary>
+    /// The last line whose start is at or before <paramref name="pos"/> (lines are in stream order, except for TX held
+    /// back in AfterLine mode, where this is approximate). Returns -1 if there are no lines.
+    /// </summary>
+    public long FindLine(StreamPos pos)
+    {
+        long lo = _projection.FirstLine, hi = _projection.NextLine - 1, found = -1;
+        if (hi < lo) return -1;
+        while (lo <= hi)
+        {
+            long mid = lo + (hi - lo) / 2;
+            if (LineBytes.StartOf(_projection[mid]) <= pos) { found = mid; lo = mid + 1; }
+            else hi = mid - 1;
+        }
+        return found < 0 ? _projection.FirstLine : found;
+    }
+
     /// <summary>The event kind for an event line, plus its line-error flags (for coloring).</summary>
     public uint GetEventInfo(long index)
     {
@@ -173,6 +215,12 @@ public sealed class TextDocument
         long? prev = index > _projection.FirstLine ? _projection[index - 1].Timestamp : null;
         long? connect = _timestamps == TimestampMode.SinceConnect ? _projection.ConnectTimestampFor(line.Seq) : null;
         return TimestampFormatter.Format(_timestamps, line.Timestamp, prev, connect, Clock);
+    }
+
+    private void ClearCaches()
+    {
+        _cache.Clear();
+        _byteCache.Clear();
     }
 
     private void InvalidateFormatting()
@@ -195,7 +243,7 @@ public sealed class TextDocument
         if (_store.Count <= SyncRebuildEventLimit)
         {
             _projection = new LineProjection(options);
-            _cache.Clear();
+            ClearCaches();
             Update(int.MaxValue);
             Updated?.Invoke(this, EventArgs.Empty);
             return;

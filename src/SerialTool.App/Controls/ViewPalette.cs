@@ -2,7 +2,7 @@ using System.Windows.Media;
 
 namespace SerialTool.App.Controls;
 
-/// <summary>Colors for the text view. Light theme for now; themes come in milestone 7.</summary>
+/// <summary>Colors for the text and hex views. Light theme for now; themes come in milestone 7.</summary>
 internal sealed class ViewPalette
 {
     public static readonly ViewPalette Light = new()
@@ -17,6 +17,12 @@ internal sealed class ViewPalette
         EventPin = Brush(0x7B, 0x3F, 0xA0),
         EventError = Brush(0xC6, 0x28, 0x28),
         TxBackground = Brush(0x0B, 0x5C, 0xAD, 0x0C),
+        Selection = Brush(0x99, 0xC9, 0xEF, 0x90),
+        HexZero = Brush(0xA8, 0xA8, 0xA8),
+        HexFF = Brush(0xC0, 0x6A, 0x00),
+        HexControl = Brush(0xB0, 0x30, 0x60),
+        HexHigh = Brush(0x7B, 0x3F, 0xA0),
+        HexOffset = Brush(0x9A, 0x9A, 0x9A),
     };
 
     public required Brush Background { get; init; }
@@ -29,6 +35,14 @@ internal sealed class ViewPalette
     public required Brush EventPin { get; init; }
     public required Brush EventError { get; init; }
     public required Brush TxBackground { get; init; }
+    public required Brush Selection { get; init; }
+
+    // Hex view byte classes (printable bytes use the Rx/Tx colors)
+    public required Brush HexZero { get; init; }
+    public required Brush HexFF { get; init; }
+    public required Brush HexControl { get; init; }
+    public required Brush HexHigh { get; init; }
+    public required Brush HexOffset { get; init; }
 
     private static SolidColorBrush Brush(byte r, byte g, byte b, byte a = 0xFF)
     {

@@ -13,6 +13,7 @@
         <local:BoolToVisibilityConverter x:Key="BoolVis" />
         <local:NonZeroToVisibilityConverter x:Key="NonZeroVis" />
         <local:NotEmptyToVisibilityConverter x:Key="NotEmptyVis" />
+        <local:IntEqualsConverter x:Key="IntEquals" />
 
         <DataTemplate x:Key="EnumItem">
             <TextBlock Text="{Binding Converter={StaticResource EnumDisplay}}" />
@@ -51,6 +52,7 @@
     <Window.InputBindings>
         <KeyBinding Key="L" Modifiers="Control" Command="{Binding ClearCommand}" />
         <KeyBinding Key="Pause" Command="{Binding TogglePauseCommand}" />
+        <KeyBinding Key="H" Modifiers="Control" Command="{Binding ToggleHexCommand}" />
     </Window.InputBindings>
 
     <DockPanel>
@@ -60,7 +62,10 @@
                 <MenuItem Header="E_xit" Click="OnExit" />
             </MenuItem>
             <MenuItem Header="_Edit">
-                <MenuItem Header="_Clear" InputGestureText="Ctrl+L" Command="{Binding ClearCommand}" />
+                <MenuItem Header="_Copy" InputGestureText="Ctrl+C" Click="OnCopy" />
+                <MenuItem Header="Select _all" InputGestureText="Ctrl+A" Click="OnSelectAll" />
+                <Separator />
+                <MenuItem Header="C_lear" InputGestureText="Ctrl+L" Command="{Binding ClearCommand}" />
             </MenuItem>
             <MenuItem Header="_View">
                 <MenuItem Header="_Timestamps">
@@ -96,6 +101,13 @@
                 <MenuItem Header="Show _TX" IsCheckable="True" IsChecked="{Binding ShowTx}" />
                 <MenuItem Header="Show _events" IsCheckable="True" IsChecked="{Binding ShowEvents}" />
                 <MenuItem Header="_Word wrap" IsCheckable="True" IsChecked="{Binding WordWrap}" />
+                <Separator />
+                <MenuItem Header="He_x view" InputGestureText="Ctrl+H" IsCheckable="True" IsChecked="{Binding ShowHex}" />
+                <MenuItem Header="Hex _bytes per row">
+                    <MenuItem Header="_8" IsCheckable="True" IsChecked="{Binding HexBytesPerRow, Converter={StaticResource IntEquals}, ConverterParameter=8}" />
+                    <MenuItem Header="_16" IsCheckable="True" IsChecked="{Binding HexBytesPerRow, Converter={StaticResource IntEquals}, ConverterParameter=16}" />
+                    <MenuItem Header="_32" IsCheckable="True" IsChecked="{Binding HexBytesPerRow, Converter={StaticResource IntEquals}, ConverterParameter=32}" />
+                </MenuItem>
                 <Separator />
                 <MenuItem Header="_Pause display" InputGestureText="Pause" IsCheckable="True" IsChecked="{Binding IsPaused}" />
             </MenuItem>
@@ -137,6 +149,7 @@
                     <ToggleButton Content="{Binding PauseText}" IsChecked="{Binding IsPaused}" ToolTip="Pause display (capture continues)" />
                     <Button Content="Clear" Command="{Binding ClearCommand}" ToolTip="Clear buffer (Ctrl+L)" Margin="4,0,0,0" />
                     <ToggleButton Content="Wrap" IsChecked="{Binding WordWrap}" ToolTip="Word wrap" Margin="4,0,0,0" />
+                    <ToggleButton Content="Hex" IsChecked="{Binding ShowHex}" ToolTip="Show hex view (Ctrl+H)" />
                     <ToggleButton Content="TX" IsChecked="{Binding ShowTx}" ToolTip="Show transmitted data" />
                     <ToggleButton Content="Events" IsChecked="{Binding ShowEvents}" ToolTip="Show connection / pin / error events" />
                 </WrapPanel>
@@ -190,8 +203,19 @@
             </DockPanel>
         </Border>
 
-        <!-- Text view -->
-        <controls:LogTextView x:Name="LogView" Document="{Binding Document}" WordWrap="{Binding WordWrap}"
-                              IsPinned="{Binding IsPinned, Mode=TwoWay}" />
+        <!-- Text view, with the hex view in a split pane below (hidden by default) -->
+        <Grid x:Name="ViewsGrid">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*" MinHeight="60" />
+                <RowDefinition x:Name="SplitterRow" Height="0" />
+                <RowDefinition x:Name="HexRow" Height="0" />
+            </Grid.RowDefinitions>
+            <controls:LogTextView x:Name="LogView" Document="{Binding Document}" WordWrap="{Binding WordWrap}"
+                                  IsPinned="{Binding IsPinned, Mode=TwoWay}" Selection="{Binding Selection}" />
+            <GridSplitter x:Name="HexSplitter" Grid.Row="1" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                          Background="#DDDDDD" ResizeBehavior="PreviousAndNext" Visibility="Collapsed" />
+            <controls:HexView x:Name="HexView" Grid.Row="2" Document="{Binding HexDocument}" BytesPerRow="{Binding HexBytesPerRow}"
+                              IsPinned="{Binding HexPinned, Mode=TwoWay}" Selection="{Binding Selection}" Visibility="Collapsed" />
+        </Grid>
     </DockPanel>
 </Window>

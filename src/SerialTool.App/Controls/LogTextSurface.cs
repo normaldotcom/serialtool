@@ -10,43 +10,13 @@ namespace SerialTool.App.Controls;
 /// Draws only the visible lines of a <see cref="TextDocument"/> with GlyphRuns in fixed-width cells.
 /// Scroll position is owned by the host (<see cref="LogTextView"/>).
 /// </summary>
-internal sealed class LogTextSurface : FrameworkElement
+internal sealed class LogTextSurface : ViewSurface
 {
-    private const double LeftPadding = 4;
-
-    private GlyphCache _glyphs;
-    private readonly List<ushort> _glyphBuf = new(256);
-    private readonly List<double> _advanceBuf = new(256);
-
-    public LogTextSurface()
-    {
-        _glyphs = new GlyphCache("Cascadia Mono", 13);
-        ClipToBounds = true;
-        SnapsToDevicePixels = true;
-        TextOptions.SetTextFormattingMode(this, TextFormattingMode.Display);
-        TextOptions.SetTextRenderingMode(this, TextRenderingMode.ClearType);
-    }
-
-    public TextDocument? Document { get; set; }
     public bool Wrap { get; set; }
-    public ViewPalette Palette { get; set; } = ViewPalette.Light;
 
-    public long TopLine { get; set; }
-    public int TopRow { get; set; }
-    public int HOffset { get; set; }
+    public override bool VariableRows => Wrap;
 
-    /// <summary>Widest line (in cells) seen while rendering since the last reset; drives the horizontal scrollbar.</summary>
-    public int MaxCellsSeen { get; set; }
-
-    public double LastRenderMs { get; private set; }
-
-    public long RenderCount { get; private set; }
-
-    public double CellWidth => _glyphs.CellWidth;
-    public double LineHeight => _glyphs.LineHeight;
-
-    /// <summary>Rows that fit completely.</summary>
-    public int VisibleRows => Math.Max(1, (int)Math.Floor(ActualHeight / LineHeight));
+    public override int ScrollColumns => TextColumns;
 
     public double TextLeft
     {
@@ -60,12 +30,39 @@ internal sealed class LogTextSurface : FrameworkElement
     /// <summary>Text columns available (wrap width, or visible columns when not wrapping).</summary>
     public int TextColumns => Math.Max(1, (int)Math.Floor((ActualWidth - TextLeft - LeftPadding) / CellWidth));
 
-    /// <summary>Visual rows a line occupies.</summary>
-    public int RowsFor(long line)
+    public override int RowsFor(long line)
     {
         if (!Wrap || Document is null) return 1;
         int cells = Document.GetText(line).CellCount;
         return Math.Max(1, (cells + TextColumns - 1) / TextColumns);
+    }
+
+    public override int RowOf(long line, StreamPos pos)
+    {
+        var doc = Document;
+        if (!Wrap || doc is null || !doc.GetLine(line).IsData) return 0;
+        var text = doc.GetText(line);
+        return Math.Min(RowsFor(line) - 1, CellAtByte(text, doc.IndexOf(line, pos)) / TextColumns);
+    }
+
+    public override ViewHit? HitTest(Point p)
+    {
+        var doc = Document;
+        if (doc is null || RowAt(p.Y) is not var (line, row)) return null;
+        var text = doc.GetText(line);
+        int columns = TextColumns;
+        int rowStart = Wrap ? row * columns : 0;
+        int rowEnd = Wrap ? Math.Min(text.CellCount, (row + 1) * columns) : text.CellCount;
+        int scroll = Wrap ? row * columns : HOffset;
+        int cell = scroll + (int)Math.Round((p.X - TextLeft) / CellWidth);
+        cell = Math.Clamp(cell, rowStart, Math.Max(rowStart, rowEnd));
+        if (p.Y >= ActualHeight && line == doc.NextLine - 1) cell = text.CellCount; // dragged below the end
+
+        var info = doc.GetLine(line);
+        StreamPos pos = info.IsData
+            ? doc.PositionAt(line, text.ByteAtCell(cell))
+            : new StreamPos(info.Seq, cell > 0 ? 1 : 0);
+        return new ViewHit(line, pos, pos);
     }
 
     protected override void OnRender(DrawingContext dc)
@@ -80,11 +77,12 @@ internal sealed class LogTextSurface : FrameworkElement
             return;
         }
 
-        float pixelsPerDip = (float)VisualTreeHelper.GetDpi(this).PixelsPerDip;
+        float pixelsPerDip = PixelsPerDip;
         double textLeft = TextLeft;
         int columns = TextColumns;
         double height = ActualHeight;
         double y = 0;
+        bool hasSelection = Selection is { IsEmpty: false };
 
         var textClip = new RectangleGeometry(new Rect(textLeft, 0, Math.Max(0, ActualWidth - textLeft), height));
         textClip.Freeze();
@@ -96,15 +94,50 @@ internal sealed class LogTextSurface : FrameworkElement
             MaxCellsSeen = Math.Max(MaxCellsSeen, text.CellCount);
             var (normal, control) = BrushesFor(doc, line, info);
 
+            // Selected cells [selFrom, selTo), plus a marker cell if the selection runs on past the line end.
+            int selFrom = 0, selTo = 0;
+            bool selPastEnd = false;
+            if (hasSelection)
+            {
+                var (bFrom, bTo) = SelectedBytes(doc, line);
+                if (bTo > bFrom)
+                {
+                    if (info.IsData)
+                    {
+                        selFrom = CellAtByte(text, bFrom);
+                        selTo = CellAtByte(text, bTo);
+                        selPastEnd = bTo >= info.Length && Selection!.End > doc.LineEnd(line);
+                    }
+                    else
+                    {
+                        selFrom = 0;
+                        selTo = Math.Max(1, text.CellCount);
+                    }
+                }
+            }
+
             int rows = Wrap ? Math.Max(1, (text.CellCount + columns - 1) / columns) : 1;
             int firstRow = line == TopLine ? Math.Min(TopRow, rows - 1) : 0;
 
             for (int r = firstRow; r < rows && y < height; r++)
             {
-                double baseline = y + _glyphs.Baseline;
+                double baseline = y + Glyphs.Baseline;
+                int rowFrom = Wrap ? r * columns : HOffset;
+                int rowTo = Wrap ? (r + 1) * columns : HOffset + columns + 1;
 
                 if (info.Direction == Direction.Tx && info.IsData)
                     dc.DrawRectangle(Palette.TxBackground, null, new Rect(0, y, ActualWidth, LineHeight));
+
+                if (selTo > selFrom || selPastEnd)
+                {
+                    int a = Math.Max(selFrom, rowFrom);
+                    int b = Math.Min(selTo + (selPastEnd && r == rows - 1 ? 1 : 0), rowTo);
+                    if (b > a)
+                    {
+                        dc.DrawRectangle(Palette.Selection, null,
+                            new Rect(textLeft + (a - rowFrom) * CellWidth, y, (b - a) * CellWidth, LineHeight));
+                    }
+                }
 
                 if (r == 0 && doc.Timestamps != TimestampMode.Off)
                 {
@@ -114,14 +147,7 @@ internal sealed class LogTextSurface : FrameworkElement
                 }
 
                 dc.PushClip(textClip);
-                if (Wrap)
-                {
-                    DrawCells(dc, text, r * columns, (r + 1) * columns, textLeft, baseline, normal, control, pixelsPerDip);
-                }
-                else
-                {
-                    DrawCells(dc, text, HOffset, HOffset + columns + 1, textLeft, baseline, normal, control, pixelsPerDip);
-                }
+                DrawCells(dc, text, rowFrom, rowTo, textLeft, baseline, normal, control, pixelsPerDip);
                 dc.Pop();
                 y += LineHeight;
             }
@@ -130,82 +156,17 @@ internal sealed class LogTextSurface : FrameworkElement
         LastRenderMs = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
     }
 
-    private (Brush Normal, Brush Control) BrushesFor(TextDocument doc, long line, in DisplayLine info)
+    /// <summary>First cell whose source byte is at or after <paramref name="byteIndex"/>.</summary>
+    private static int CellAtByte(FormattedLine text, int byteIndex)
     {
-        if (info.IsData)
-            return info.Direction == Direction.Tx ? (Palette.Tx, Palette.TxControl) : (Palette.Rx, Palette.RxControl);
-
-        var brush = info.Kind switch
+        var map = text.CellBytes;
+        if (map is null) return 0;
+        int lo = 0, hi = map.Length;
+        while (lo < hi)
         {
-            EventKind.Error => Palette.EventError,
-            EventKind.PinChange => Palette.EventPin,
-            EventKind.Close when doc.GetText(line).Text.Contains("lost", StringComparison.OrdinalIgnoreCase) => Palette.EventError,
-            _ => Palette.EventInfo,
-        };
-        return (brush, brush);
-    }
-
-    /// <summary>Draws cells [cellFrom, cellTo) of <paramref name="text"/> starting at x.</summary>
-    private void DrawCells(DrawingContext dc, FormattedLine text, int cellFrom, int cellTo, double x, double baseline,
-        Brush normal, Brush control, float pixelsPerDip)
-    {
-        if (cellTo <= cellFrom || text.CellCount <= cellFrom) return;
-
-        GlyphTypeface? batchFace = null;
-        Brush? batchBrush = null;
-        int batchStartCell = 0;
-        _glyphBuf.Clear();
-        _advanceBuf.Clear();
-
-        string s = text.Text;
-        int cell = 0;
-        foreach (var run in text.Runs)
-        {
-            var brush = run.Style == CellStyle.Control ? control : normal;
-            int end = run.Start + run.Length;
-            for (int k = run.Start; k < end;)
-            {
-                int cp;
-                if (char.IsHighSurrogate(s[k]) && k + 1 < s.Length && char.IsLowSurrogate(s[k + 1]))
-                {
-                    cp = char.ConvertToUtf32(s[k], s[k + 1]);
-                    k += 2;
-                }
-                else
-                {
-                    cp = s[k];
-                    k++;
-                }
-
-                if (cell >= cellTo) goto done;
-                if (cell >= cellFrom)
-                {
-                    var (face, glyph) = _glyphs.Lookup(cp);
-                    if (!ReferenceEquals(face, batchFace) || !ReferenceEquals(brush, batchBrush))
-                    {
-                        Flush();
-                        batchFace = face;
-                        batchBrush = brush;
-                        batchStartCell = cell;
-                    }
-                    _glyphBuf.Add(glyph);
-                    _advanceBuf.Add(_glyphs.CellWidth);
-                }
-                cell++;
-            }
+            int mid = (lo + hi) >>> 1;
+            if (map[mid] < byteIndex) lo = mid + 1; else hi = mid;
         }
-    done:
-        Flush();
-
-        void Flush()
-        {
-            if (_glyphBuf.Count == 0 || batchFace is null || batchBrush is null) return;
-            var origin = new Point(x + (batchStartCell - cellFrom) * _glyphs.CellWidth, baseline);
-            var run = new GlyphRun(batchFace, 0, false, _glyphs.EmSize, pixelsPerDip,
-                _glyphBuf.ToArray(), origin, _advanceBuf.ToArray(), null, null, null, null, null, null);
-            dc.DrawGlyphRun(batchBrush, run);
-            _glyphBuf.Clear();
-            _advanceBuf.Clear();
-        }
+        return lo;
     }
 }

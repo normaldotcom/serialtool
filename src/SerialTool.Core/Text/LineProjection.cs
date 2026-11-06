@@ -8,6 +8,11 @@ public enum GroupingMode
     Delimiter,
     /// <summary>A new line starts when the gap between reads exceeds the idle threshold (newlines also break).</summary>
     IdleGap,
+    /// <summary>
+    /// No newline breaks: lines end only on a direction change, an event, or the max line length.
+    /// Used by the hex view when timestamps are off (bytes flow continuously).
+    /// </summary>
+    Continuous,
 }
 
 public enum NewlineMode
@@ -242,6 +247,7 @@ public sealed class LineProjection
 
         // CR at the end of the previous read + LF at the start of this one = one CRLF terminator.
         if (_pendingCrLine >= 0 && _pendingCrLine == _nextLine - 1 && span[0] == 0x0A
+            && Options.Grouping != GroupingMode.Continuous
             && Options.Newline is NewlineMode.Any or NewlineMode.CrLf)
         {
             var prev = Last;
@@ -295,7 +301,7 @@ public sealed class LineProjection
             }
 
             // No terminator in the window.
-            bool crAtEnd = window > 0 && span[i + window - 1] == 0x0D && i + window == span.Length
+            bool crAtEnd = Options.Grouping != GroupingMode.Continuous && window > 0 && span[i + window - 1] == 0x0D && i + window == span.Length
                            && Options.Newline == NewlineMode.CrLf;
             var openFlags = line.Flags | (crAtEnd ? LineFlags.EndsWithCr : 0);
             ReplaceLast(line with { Length = line.Length + window, Flags = openFlags });
@@ -322,6 +328,7 @@ public sealed class LineProjection
     private int FindBreak(ReadOnlySpan<byte> s, out bool endsWithCr)
     {
         endsWithCr = false;
+        if (Options.Grouping == GroupingMode.Continuous) return -1;
         switch (Options.Newline)
         {
             case NewlineMode.Lf:

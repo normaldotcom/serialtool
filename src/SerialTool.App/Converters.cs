@@ -14,6 +14,16 @@ public sealed class EnumBoolConverter : IValueConverter
         value is true && parameter is string name ? Enum.Parse(targetType, name) : Binding.DoNothing;
 }
 
+/// <summary>Radio-style menu check for an int property: checked when value == parameter; checking sets it.</summary>
+public sealed class IntEqualsConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture) =>
+        value?.ToString() == parameter?.ToString();
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
+        value is true && int.TryParse(parameter?.ToString(), out int n) ? n : Binding.DoNothing;
+}
+
 /// <summary>Friendly display names for enum values in combo boxes.</summary>
 public sealed class EnumDisplayConverter : IValueConverter
 {

@@ -55,6 +55,10 @@ added as another data source without touching the views.
 ### Hex view rows
 - Row breaks follow the **active grouping mode** (raw read / delimiter / idle gap)
   when timestamps are shown; otherwise bytes flow continuously at N bytes per row.
+  (Implemented as a second projection with an internal `Continuous` grouping mode:
+  rows break only on direction change, events, or the max line length. It exists only
+  while the hex pane is visible and timestamps are off.)
+- Offsets are relative to the start of the line (continuous mode: the run of one direction).
 
 ### Wrapping
 - View menu → "Word wrap" toggle (default off = horizontal scroll).
@@ -200,7 +204,11 @@ added as another data source without touching the views.
   mode (see above). Color coding by direction plus byte class (0x00, 0xFF, control,
   printable, high-bit), theme-configurable.
 - **Linked selection**: selecting a range in either view highlights the same
-  bytes in the other (shared `(seq, offset)` addressing).
+  bytes in the other (shared `(seq, offset)` addressing — `StreamPos`/`ByteSelection`),
+  and the other view scrolls to show it. Text view: caret-boundary selection
+  (formatted cells map back to source bytes); hex view: whole-byte selection.
+  Double-click selects a line; Ctrl+A / Ctrl+C / Esc. Basic copy (text view: decoded
+  text; hex view: space-separated hex) until the copy-as formats in milestone 5.
 - Copy as: text, hex string, C array, base64. Large selections are copied off the UI thread with a size warning.
 - Search: text or hex pattern, next/prev, highlight all. Runs incrementally in the
   background; matches can span read boundaries but never cross between RX and TX.

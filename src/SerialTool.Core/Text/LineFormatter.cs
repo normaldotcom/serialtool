@@ -27,13 +27,15 @@ public sealed class FormattedLine
 {
     public static readonly FormattedLine Empty = new(string.Empty, []);
 
-    public FormattedLine(string text, StyleRun[] runs)
+    public FormattedLine(string text, StyleRun[] runs, int[]? cellBytes = null, int byteLength = 0)
     {
         Text = text;
         Runs = runs;
         int cells = text.Length;
         foreach (char ch in text) if (char.IsLowSurrogate(ch)) cells--;
         CellCount = cells;
+        CellBytes = cellBytes;
+        ByteLength = byteLength;
     }
 
     /// <summary>Single-run line in the normal style.</summary>
@@ -45,6 +47,20 @@ public sealed class FormattedLine
 
     /// <summary>Number of display cells (code points).</summary>
     public int CellCount { get; }
+
+    /// <summary>For data lines: index of the source byte each cell was produced from (null for event lines).</summary>
+    public int[]? CellBytes { get; }
+
+    /// <summary>For data lines: number of source bytes.</summary>
+    public int ByteLength { get; }
+
+    /// <summary>Source byte index at a cell boundary (0..CellCount); <see cref="ByteLength"/> past the last cell.</summary>
+    public int ByteAtCell(int cell)
+    {
+        if (CellBytes is null) return 0;
+        if (cell <= 0) return CellBytes.Length > 0 ? CellBytes[0] : 0;
+        return cell < CellBytes.Length ? CellBytes[cell] : ByteLength;
+    }
 }
 
 /// <summary>Converts raw line bytes to display text according to encoding and control-character settings.</summary>
@@ -60,6 +76,7 @@ public static class LineFormatter
         int i = 0;
         while (i < bytes.Length)
         {
+            b.Source = i;
             byte c = bytes[i];
             if (c < 0x20 || c == 0x7F)
             {
@@ -93,7 +110,11 @@ public static class LineFormatter
                     else if (status == OperationStatus.Done)
                     {
                         // U+0080..U+009F C1 controls: show the raw bytes
-                        for (int k = 0; k < consumed; k++) AppendUndecodable(ref b, bytes[i + k], mode);
+                        for (int k = 0; k < consumed; k++)
+                        {
+                            b.Source = i + k;
+                            AppendUndecodable(ref b, bytes[i + k], mode);
+                        }
                         i += consumed;
                     }
                     else
@@ -109,7 +130,7 @@ public static class LineFormatter
                     break;
             }
         }
-        return b.Build();
+        return b.Build(bytes.Length);
     }
 
     private static void AppendControl(ref Builder b, byte c, ControlCharMode mode)
@@ -157,15 +178,21 @@ public static class LineFormatter
     {
         private readonly StringBuilder _sb;
         private readonly List<StyleRun> _runs;
+        private readonly List<int> _cellBytes;
         private int _runStart;
         private CellStyle _runStyle;
+
+        /// <summary>Source byte index that the next appended cells come from.</summary>
+        public int Source;
 
         public Builder(int capacity)
         {
             _sb = new StringBuilder(capacity + 8);
             _runs = new List<StyleRun>(4);
+            _cellBytes = new List<int>(capacity + 8);
             _runStart = 0;
             _runStyle = CellStyle.Normal;
+            Source = 0;
         }
 
         public readonly int Length => _sb.Length;
@@ -174,12 +201,14 @@ public static class LineFormatter
         {
             Switch(style);
             _sb.Append(c);
+            if (!char.IsLowSurrogate(c)) _cellBytes.Add(Source);
         }
 
         public void Append(ReadOnlySpan<char> s, CellStyle style)
         {
             Switch(style);
             _sb.Append(s);
+            foreach (char c in s) if (!char.IsLowSurrogate(c)) _cellBytes.Add(Source);
         }
 
         private void Switch(CellStyle style)
@@ -190,10 +219,10 @@ public static class LineFormatter
             _runStyle = style;
         }
 
-        public FormattedLine Build()
+        public FormattedLine Build(int byteLength)
         {
             if (_sb.Length > _runStart) _runs.Add(new StyleRun(_runStart, _sb.Length - _runStart, _runStyle));
-            return new FormattedLine(_sb.ToString(), [.. _runs]);
+            return new FormattedLine(_sb.ToString(), [.. _runs], [.. _cellBytes], byteLength);
         }
     }
 }

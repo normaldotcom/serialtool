@@ -14,14 +14,14 @@ namespace SerialTool.App;
 /// </summary>
 internal static class Benchmark
 {
-    public static void AttachIfRequested(Window window, MainViewModel vm, LogTextView view)
+    public static void AttachIfRequested(Window window, MainViewModel vm, LogTextView view, HexView hex)
     {
         var spec = Environment.GetEnvironmentVariable("SERIALTOOL_BENCH");
         if (string.IsNullOrWhiteSpace(spec)) return;
         var parts = spec.Split(':');
         string portName = parts[0];
         int seconds = parts.Length > 1 && int.TryParse(parts[1], out int s) ? s : 10;
-        window.Loaded += async (_, _) => await RunAsync(window, vm, view, portName, seconds);
+        window.Loaded += async (_, _) => await RunAsync(window, vm, view, hex, portName, seconds);
     }
 
     private sealed class Phase(string name)
@@ -39,7 +39,7 @@ internal static class Benchmark
         public TimeSpan CpuEnd { get; set; }
     }
 
-    private static async Task RunAsync(Window window, MainViewModel vm, LogTextView view, string portName, int seconds)
+    private static async Task RunAsync(Window window, MainViewModel vm, LogTextView view, HexView hex, string portName, int seconds)
     {
         var report = new StringBuilder();
         var port = vm.Ports.FirstOrDefault(p => p.Name == portName);
@@ -54,6 +54,13 @@ internal static class Benchmark
             vm.Grouping = grouping;
         if (Enum.TryParse<SerialTool.Core.Text.ControlCharMode>(Environment.GetEnvironmentVariable("SERIALTOOL_CONTROLCHARS"), out var cc))
             vm.ControlChars = cc;
+        if (Enum.TryParse<SerialTool.Core.Text.TimestampMode>(Environment.GetEnvironmentVariable("SERIALTOOL_TIMESTAMPS"), out var tsMode))
+            vm.Timestamps = tsMode;
+        if (int.TryParse(Environment.GetEnvironmentVariable("SERIALTOOL_HEX"), out int bpr))
+        {
+            vm.HexBytesPerRow = bpr;
+            vm.ShowHex = true;
+        }
 
         vm.SelectedPort = port;
         await vm.ConnectAsync();
@@ -119,6 +126,24 @@ internal static class Benchmark
         Write(report);
 
         var shotDir2 = Environment.GetEnvironmentVariable("SERIALTOOL_SHOT");
+        if (!string.IsNullOrWhiteSpace(shotDir2) && Environment.GetEnvironmentVariable("SERIALTOOL_SELECT") == "1")
+        {
+            // Linked-selection snapshot: select from mid-line to mid-next-line near the bottom of the text view.
+            vm.IsPaused = true;
+            var doc = vm.Document;
+            long line = Math.Max(doc.FirstLine, doc.NextLine - 6);
+            vm.Selection.Set(doc.PositionAt(line, 3), doc.PositionAt(line + 1, 5), view);
+            await Task.Delay(300);
+            report.AppendLine($"selection: [{vm.Selection.Start}, {vm.Selection.End})");
+            view.Focus();
+            view.CopySelection();
+            report.AppendLine("text copy: " + System.Windows.Clipboard.GetText().Replace(Environment.NewLine, " | "));
+            hex.Focus();
+            hex.CopySelection();
+            report.AppendLine("hex copy:  " + System.Windows.Clipboard.GetText().Replace(Environment.NewLine, " | "));
+            Write(report);
+            Snapshot(window, Path.Combine(shotDir2, "shot-select.png"));
+        }
         if (!string.IsNullOrWhiteSpace(shotDir2) && Environment.GetEnvironmentVariable("SERIALTOOL_SHOT_DIALOG") == "1")
         {
             var dlg = new LineSettingsWindow(vm.Document.Options, _ => { }) { Owner = window };
