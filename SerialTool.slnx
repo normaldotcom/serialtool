@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/SerialTool.App/SerialTool.App.csproj" />
+    <Project Path="src/SerialTool.Core/SerialTool.Core.csproj" />
+    <Project Path="src/SerialTool.Serial/SerialTool.Serial.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/SerialTool.Core.Tests/SerialTool.Core.Tests.csproj" />
+    <Project Path="tests/SerialTool.Serial.Tests/SerialTool.Serial.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/SerialTool.Harness/SerialTool.Harness.csproj" />
+  </Folder>
+</Solution>

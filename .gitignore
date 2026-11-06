@@ -1,0 +1,34 @@
+# Build output
+bin/
+obj/
+publish/
+artifacts/
+
+# Test results / coverage
+TestResults/
+*.trx
+coverage*.json
+coverage*.xml
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.userprefs
+*.DotSettings.user
+
+# NuGet
+*.nupkg
+*.snupkg
+.nuget/
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Logs / session captures produced while testing
+*.log
+*.stsession
