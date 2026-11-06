@@ -19,6 +19,7 @@ internal static class Program
                 "open" when args.Length >= 2 => Open(args[1], ParseConfig(args.Skip(2))).GetAwaiter().GetResult(),
                 "loopback" when args.Length >= 3 => Loopback(args[1], args[2], ParseConfig(args.Skip(3)), ParseSeconds(args.Skip(3))).GetAwaiter().GetResult(),
                 "bench" => Bench(args.Skip(1)).GetAwaiter().GetResult(),
+                "sendtest" when args.Length >= 2 => SendTest(args[1], ParseConfig(args.Skip(2))).GetAwaiter().GetResult(),
                 _ => Usage(),
             };
         }
@@ -247,6 +248,44 @@ internal static class Program
                           (mismatchAt >= 0 ? $"MISMATCH at byte {mismatchAt}" : "data OK"));
         Console.WriteLine($"    read-size histogram (<=N bytes: count): {string.Join(", ", readSizes.Select(kv => $"{kv.Key}:{kv.Value}"))}");
         return pass;
+    }
+
+    // ------------------------------------------------------------------ sendtest
+
+    /// <summary>Sends 5 short lines, timing each send (10 s harness cancel), without console output on the capture thread.</summary>
+    private static async Task<int> SendTest(string port, SerialConfig config)
+    {
+        var store = new EventStore();
+        await using var pipeline = new CapturePipeline(store);
+        await using var src = new SerialSource(port, config);
+        await src.OpenAsync(pipeline);
+        Console.WriteLine($"Opened {port} {config}; pins {src.Pins}");
+        int failures = 0;
+        for (int i = 1; i <= 5; i++)
+        {
+            var sw = Stopwatch.StartNew();
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            try
+            {
+                await src.SendAsync(Encoding.ASCII.GetBytes($"line {i}\r\n"), cts.Token);
+                Console.WriteLine($"  send {i}: completed in {sw.Elapsed.TotalMilliseconds:0.0} ms");
+            }
+            catch (SerialPortException ex)
+            {
+                failures++;
+                Console.WriteLine($"  send {i}: FAILED after {sw.Elapsed.TotalMilliseconds:0} ms: {ex.Message}");
+            }
+            catch (OperationCanceledException)
+            {
+                failures++;
+                Console.WriteLine($"  send {i}: STUCK (cancelled after 10 s), pending={src.PendingWrites}");
+            }
+            await Task.Delay(200);
+        }
+        await src.CloseAsync();
+        await pipeline.FlushAsync();
+        Console.WriteLine($"store events: {store.Count}, tx bytes {pipeline.TxBytes}");
+        return failures == 0 ? 0 : 1;
     }
 
     // ------------------------------------------------------------------ bench

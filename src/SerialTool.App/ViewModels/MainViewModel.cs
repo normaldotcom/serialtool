@@ -410,6 +410,10 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         {
             StateDetail = "Send cancelled";
         }
+        catch (SerialPortException ex)
+        {
+            StateDetail = ex.Message;
+        }
         catch (Exception ex)
         {
             StateDetail = $"Send failed: {ex.Message}";

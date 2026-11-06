@@ -238,6 +238,35 @@ public class LoopbackTests
     }
 
     [LoopbackFact]
+    public async Task Send_times_out_when_nothing_reads_the_other_end()
+    {
+        // com0com holds writes while the peer port is closed — like a device that stopped reading.
+        var store = new EventStore();
+        await using var pipe = new CapturePipeline(store);
+        await using var a = new SerialSource(A, new SerialConfig()) { WriteTimeout = TimeSpan.FromMilliseconds(300) };
+        await a.OpenAsync(pipe);
+
+        // com0com accepts the first write into its buffer; later ones block.
+        try { await a.SendAsync("first\r\n"u8.ToArray()).WaitAsync(TimeSpan.FromSeconds(5)); }
+        catch (SerialPortException) { }
+
+        var sw = Stopwatch.StartNew();
+        var ex = await Assert.ThrowsAsync<SerialPortException>(() => a.SendAsync("hello\r\n"u8.ToArray()).WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Equal(121, ex.Win32Error); // ERROR_SEM_TIMEOUT
+        Assert.True(sw.ElapsedMilliseconds < 3000, $"timeout took {sw.ElapsedMilliseconds} ms");
+        Assert.True(a.IsOpen);
+        Assert.Equal(0, a.PendingWrites);
+
+        await pipe.FlushAsync();
+        Assert.Contains(All(store), e => e.Kind == EventKind.Error && e.PayloadText.Contains("isn't accepting data"));
+
+        // Once something reads the other end, sending works again.
+        await using var b = new SerialSource(B, new SerialConfig());
+        await b.OpenAsync(new CapturePipeline(new EventStore()));
+        await a.SendAsync("ok"u8.ToArray()).WaitAsync(TimeSpan.FromSeconds(2));
+    }
+
+    [LoopbackFact]
     public async Task User_cancellation_token_cancels_a_stuck_send()
     {
         await using var b = new SerialSource(B, new SerialConfig());

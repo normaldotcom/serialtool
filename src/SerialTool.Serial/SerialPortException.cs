@@ -22,6 +22,8 @@ public sealed class SerialPortException : IOException
         Kernel32.ERROR_DEVICE_REMOVED => "device was removed",
         Kernel32.ERROR_GEN_FAILURE => "device is not functioning (unplugged?)",
         Kernel32.ERROR_BAD_COMMAND => "device does not recognize the command (unplugged?)",
+        Kernel32.ERROR_SEM_TIMEOUT => "timed out — the device isn't accepting data (flow control holding it off, " +
+                                      "or nothing reading the other end)",
         _ => $"{new Win32Exception(win32Error).Message} (error {win32Error})",
     };
 }

@@ -103,16 +103,7 @@ public sealed class SerialSource : IDataSource
             ApplyConfig(ref dcb, Config, Config.RtsOnOpen, Config.DtrOnOpen);
             if (!SetCommState(h, ref dcb)) ThrowLast($"Port rejected settings {Config}");
 
-            // Return immediately with whatever is buffered; otherwise wait for the first byte, up to ReadTimeoutMs.
-            var timeouts = new COMMTIMEOUTS
-            {
-                ReadIntervalTimeout = MAXDWORD,
-                ReadTotalTimeoutMultiplier = MAXDWORD,
-                ReadTotalTimeoutConstant = ReadTimeoutMs,
-                WriteTotalTimeoutMultiplier = 0,
-                WriteTotalTimeoutConstant = 0, // no write timeout: blocked sends are cancelled explicitly
-            };
-            if (!SetCommTimeouts(h, ref timeouts)) ThrowLast("SetCommTimeouts failed");
+            ApplyTimeouts(h, Config);
             if (!SetCommMask(h, CommEventMask)) ThrowLast("SetCommMask failed");
             PurgeComm(h, PURGE_RXCLEAR | PURGE_TXCLEAR);
             ClearCommError(h, out _, out _);
@@ -203,6 +194,30 @@ public sealed class SerialSource : IDataSource
 
     // ---------------------------------------------------------------- control
 
+    /// <summary>
+    /// Base time a send may stay blocked before it fails, on top of twice its wire time at the current baud rate.
+    /// A send blocks when the device isn't taking data: CTS/DSR held low, XOFF received, a USB device that stopped
+    /// reading, or a virtual port with nothing open on the other end. Set before opening. Default 5 s.
+    /// </summary>
+    public TimeSpan WriteTimeout { get; set; } = TimeSpan.FromSeconds(5);
+
+    private void ApplyTimeouts(SafeFileHandle h, SerialConfig config)
+    {
+        // Wire time per byte: start + data + parity + stop bits (≈ 10-12 bits). Allow 2x, at least 1 ms/byte.
+        double bitsPerByte = 1 + config.DataBits + (config.Parity == Parity.None ? 0 : 1) + (config.StopBits == StopBits.One ? 1 : 2);
+        uint perByteMs = (uint)Math.Max(1, Math.Ceiling(2 * bitsPerByte * 1000.0 / config.BaudRate));
+        var timeouts = new COMMTIMEOUTS
+        {
+            // Return immediately with whatever is buffered; otherwise wait for the first byte, up to ReadTimeoutMs.
+            ReadIntervalTimeout = MAXDWORD,
+            ReadTotalTimeoutMultiplier = MAXDWORD,
+            ReadTotalTimeoutConstant = ReadTimeoutMs,
+            WriteTotalTimeoutMultiplier = perByteMs,
+            WriteTotalTimeoutConstant = (uint)Math.Clamp(WriteTimeout.TotalMilliseconds, 1, int.MaxValue),
+        };
+        if (!SetCommTimeouts(h, ref timeouts)) ThrowLast("SetCommTimeouts failed");
+    }
+
     /// <summary>Changes line settings while open. Posts a ConfigChange event. The buffer is unaffected.</summary>
     public void Reconfigure(SerialConfig config)
     {
@@ -214,6 +229,7 @@ public sealed class SerialSource : IDataSource
             if (!GetCommState(h, ref dcb)) ThrowLast("GetCommState failed");
             ApplyConfig(ref dcb, config, _rts, _dtr);
             if (!SetCommState(h, ref dcb)) ThrowLast($"Port rejected settings {config}");
+            ApplyTimeouts(h, config);
             Config = config;
             _sink!.Post(SourceEvent.Control(EventKind.ConfigChange, text: config.ToString()));
         }
@@ -484,7 +500,8 @@ public sealed class SerialSource : IDataSource
                         bool ok = WriteFile(h, op.Buffer, (uint)len, 0, op.Overlapped);
                         err = op.Complete(h, ok, out uint n);
                         offset += (int)n;
-                        if (err == 0 && n == 0) err = ERROR_SEM_TIMEOUT;
+                        // A short write with no error means the driver's write timeout expired.
+                        if (err == 0 && n < len) err = ERROR_SEM_TIMEOUT;
                     }
                 }
 
