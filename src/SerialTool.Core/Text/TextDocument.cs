@@ -122,6 +122,9 @@ public sealed class TextDocument
         _batch.Clear();
         if (n > 0) changed = true;
 
+        // Show held-back TX if the RX line it's waiting for has gone quiet.
+        if (_projection.FlushStaleDeferred(System.Diagnostics.Stopwatch.GetTimestamp())) changed = true;
+
         if (_projection.LastLineVersion != _lastLineVersion)
         {
             _lastLineVersion = _projection.LastLineVersion;

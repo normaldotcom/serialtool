@@ -103,6 +103,29 @@ public sealed class LineProjection
 
     // AfterLine mode: TX lines held back while an RX line is open
     private readonly List<DisplayLine> _deferredTx = [];
+    private long _deferredSince;
+
+    /// <summary>In AfterLine mode, held-back TX is shown anyway once the RX line has been open this long.</summary>
+    public static readonly TimeSpan DeferredTxMaxWait = TimeSpan.FromSeconds(1);
+
+    private static readonly long DeferredTxMaxWaitTicks =
+        (long)(DeferredTxMaxWait.TotalSeconds * System.Diagnostics.Stopwatch.Frequency);
+
+    /// <summary>True while TX lines are being held back waiting for an RX line to end.</summary>
+    public bool HasDeferredTx => _deferredTx.Count > 0;
+
+    /// <summary>
+    /// If TX has been held back longer than <see cref="DeferredTxMaxWait"/> as of <paramref name="now"/>, ends the
+    /// open RX line and shows the TX. Returns true if lines were added. Call periodically while idle.
+    /// </summary>
+    public bool FlushStaleDeferred(long now)
+    {
+        if (_deferredTx.Count == 0 || now - _deferredSince < DeferredTxMaxWaitTicks) return false;
+        CloseOpen();
+        _pendingCrLine = -1;
+        FlushDeferredTx();
+        return true;
+    }
 
     public LineProjection(ProjectionOptions options)
     {
@@ -156,6 +179,9 @@ public sealed class LineProjection
         if (e.Seq < NextSeq) return;
         NextSeq = e.Seq + 1;
 
+        // Deterministic stale-TX flush based on event time (identical on live feed and rebuild).
+        FlushStaleDeferred(e.Timestamp);
+
         if (e.Kind != EventKind.Data)
         {
             FeedControl(e);
@@ -206,6 +232,7 @@ public sealed class LineProjection
         if (deferThis)
         {
             // Hold TX lines (split on newlines as usual) until the RX line ends.
+            if (_deferredTx.Count == 0) _deferredSince = e.Timestamp;
             foreach (var l in SplitStandalone(e)) _deferredTx.Add(l);
             UpdateLastTs(dir, e.Timestamp);
             return;

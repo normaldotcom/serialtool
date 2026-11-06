@@ -184,15 +184,17 @@ added as another data source without touching the views.
 ### Views
 - **Text view**: custom `FrameworkElement` rendering only visible lines
   (`GlyphRun`/`FormattedText`), monospace. Options: encoding (ASCII / UTF-8 /
-  Latin-1), control-char display (hide / escapes `\r` `<02>` / symbols ␍),
+  Latin-1), control-char display (hide / escapes `\r` `<02>` / symbols: dimmed
+  arrows CR `←` LF `↓` TAB `→`, `<XX>` for others — default),
   timestamp column (off / absolute / delta-from-previous / since-connect),
   RX/TX colors, auto-scroll with "pinned to bottom" detection, pause display,
   wrap toggle, show-events toggle.
   - UTF-8 decoding works on the byte stream, not per event, so multibyte
     sequences split across reads decode correctly. A per-line char→(seq, offset) map
     supports linked selection.
-  - Font: ship with or require a font that has the Control Pictures glyphs (U+2400–U+243F),
-    or draw them manually — `GlyphRun` has no font fallback.
+  - Font: Cascadia Mono → Consolas, with per-glyph fallback to other system fonts
+    (`GlyphRun` has no automatic fallback). Control Pictures (U+2400 block) were dropped:
+    they render illegibly small in a monospace cell.
 - **Hex view**: custom virtualized control. Columns: timestamp (optional),
   offset, hex, ASCII. Bytes-per-row configurable (8/16/32). Rows follow the grouping
   mode (see above). Color coding by direction plus byte class (0x00, 0xFF, control,

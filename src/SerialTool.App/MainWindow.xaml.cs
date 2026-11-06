@@ -27,6 +27,12 @@ public partial class MainWindow : Window
 
     private void OnExit(object sender, RoutedEventArgs e) => Close();
 
+    private void OnLineSettings(object sender, RoutedEventArgs e)
+    {
+        var dlg = new LineSettingsWindow(_vm.Document.Options, _vm.ApplyLineSettings) { Owner = this };
+        dlg.ShowDialog();
+    }
+
     private void OnSendBoxKeyDown(object sender, KeyEventArgs e)
     {
         switch (e.Key)

@@ -13,10 +13,10 @@ public class LineFormatterTests
     }
 
     [Fact]
-    public void Symbols_mode_uses_control_pictures()
+    public void Symbols_mode_uses_arrows_for_cr_lf_tab()
     {
-        string expected = "a" + (char)0x240D + (char)0x240A + (char)0x2421;
-        Assert.Equal(expected, F([0x61, 0x0D, 0x0A, 0x7F], TextEncodingKind.Ascii, ControlCharMode.Symbols));
+        string expected = "a" + (char)0x2190 + (char)0x2193 + (char)0x2192 + "<7F><02>";
+        Assert.Equal(expected, F([0x61, 0x0D, 0x0A, 0x09, 0x7F, 0x02], TextEncodingKind.Ascii, ControlCharMode.Symbols));
     }
 
     [Fact]

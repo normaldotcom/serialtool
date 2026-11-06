@@ -50,6 +50,11 @@ internal static class Benchmark
             return;
         }
 
+        if (Enum.TryParse<SerialTool.Core.Text.GroupingMode>(Environment.GetEnvironmentVariable("SERIALTOOL_GROUPING"), out var grouping))
+            vm.Grouping = grouping;
+        if (Enum.TryParse<SerialTool.Core.Text.ControlCharMode>(Environment.GetEnvironmentVariable("SERIALTOOL_CONTROLCHARS"), out var cc))
+            vm.ControlChars = cc;
+
         vm.SelectedPort = port;
         await vm.ConnectAsync();
         await Task.Delay(2000); // warm up (lets tiered JIT settle)
@@ -112,6 +117,16 @@ internal static class Benchmark
             report.AppendLine($"    tick gap   {Stats(p.TickIntervalMs)}  (target 33 ms)");
         }
         Write(report);
+
+        var shotDir2 = Environment.GetEnvironmentVariable("SERIALTOOL_SHOT");
+        if (!string.IsNullOrWhiteSpace(shotDir2) && Environment.GetEnvironmentVariable("SERIALTOOL_SHOT_DIALOG") == "1")
+        {
+            var dlg = new LineSettingsWindow(vm.Document.Options, _ => { }) { Owner = window };
+            dlg.Show();
+            await Task.Delay(500);
+            Snapshot(dlg, Path.Combine(shotDir2, "shot-dialog.png"));
+            dlg.Close();
+        }
 
         await vm.DisconnectAsync();
         window.Close();

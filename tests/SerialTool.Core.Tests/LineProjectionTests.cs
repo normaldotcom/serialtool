@@ -191,6 +191,30 @@ public class LineProjectionTests
     }
 
     [Fact]
+    public void AfterLine_mode_flushes_held_tx_when_rx_line_stalls()
+    {
+        long twoSeconds = 2 * System.Diagnostics.Stopwatch.Frequency;
+        var h = new Harness(new() { Grouping = GroupingMode.Delimiter, TxBreak = TxBreakMode.AfterLine })
+            .Rx("prompt> ").Tx("AT\r\n");
+        Assert.Equal(["R:prompt> "], h.Lines());
+
+        // Next event arrives > 1 s later: the TX is shown first and RX resumes on a new line.
+        h.Rx("late", twoSeconds);
+        Assert.Equal(["R:prompt> ", "T:AT\\r\\n", "R:late"], h.Lines());
+    }
+
+    [Fact]
+    public void AfterLine_mode_idle_flush_via_timer()
+    {
+        var h = new Harness(new() { Grouping = GroupingMode.Delimiter, TxBreak = TxBreakMode.AfterLine })
+            .Rx("prompt> ").Tx("AT\r\n");
+        Assert.False(h.Projection.FlushStaleDeferred(1_000_000 + 10));
+        Assert.True(h.Projection.FlushStaleDeferred(1_000_000 + 10 * System.Diagnostics.Stopwatch.Frequency));
+        Assert.Equal(["R:prompt> ", "T:AT\\r\\n"], h.Lines());
+        Assert.False(h.Projection.HasDeferredTx);
+    }
+
+    [Fact]
     public void Trim_drops_lines_of_evicted_events()
     {
         var h = new Harness().Rx("a").Rx("b").Rx("c");

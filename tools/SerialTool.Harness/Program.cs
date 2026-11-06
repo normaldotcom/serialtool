@@ -132,6 +132,8 @@ internal static class Program
             _ = SendLogged(src, Encoding.ASCII.GetBytes(line + "\r\n"));
         }
     done:
+        // Closing purges unsent data, so let queued sends drain first (piped input reaches EOF immediately).
+        for (int i = 0; i < 200 && src.IsOpen && src.PendingWrites > 0; i++) await Task.Delay(10);
         await src.CloseAsync();
         await pipeline.FlushAsync();
         return 0;

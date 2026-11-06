@@ -331,7 +331,14 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private TimestampMode _timestamps = TimestampMode.Absolute;
     [ObservableProperty] private TextEncodingKind _encoding = TextEncodingKind.Ascii;
     [ObservableProperty] private ControlCharMode _controlChars = ControlCharMode.Symbols;
-    [ObservableProperty] private NewlineMode _newline = NewlineMode.Any;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(GroupingText))]
+    private NewlineMode _newline = NewlineMode.Any;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(GroupingText))]
+    private GroupingMode _grouping = GroupingMode.RawRead;
+
     [ObservableProperty] private bool _showTx = true;
     [ObservableProperty] private bool _showEvents = true;
     [ObservableProperty] private bool _wordWrap;
@@ -342,6 +349,39 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     partial void OnEncodingChanged(TextEncodingKind value) => Document.Encoding = value;
     partial void OnControlCharsChanged(ControlCharMode value) => Document.ControlChars = value;
     partial void OnNewlineChanged(NewlineMode value) => Document.Options = Document.Options with { Newline = value };
+    partial void OnGroupingChanged(GroupingMode value) => Document.Options = Document.Options with { Grouping = value };
+
+    /// <summary>Applies options from the Line Grouping dialog (one rebuild) and syncs the menu-bound properties.</summary>
+    public void ApplyLineSettings(ProjectionOptions options)
+    {
+        Document.Options = options;
+        Newline = options.Newline;   // no-ops on Document if already equal
+        Grouping = options.Grouping;
+        OnPropertyChanged(nameof(GroupingText));
+    }
+
+    /// <summary>Status-bar summary of how lines are formed.</summary>
+    public string GroupingText
+    {
+        get
+        {
+            var o = Document.Options;
+            string nl = o.Newline switch
+            {
+                NewlineMode.Lf => "LF",
+                NewlineMode.Cr => "CR",
+                NewlineMode.CrLf => "CRLF",
+                NewlineMode.Custom => Convert.ToHexString(o.CustomDelimiter),
+                _ => "CR/LF",
+            };
+            return o.Grouping switch
+            {
+                GroupingMode.Delimiter => $"Lines: {nl}",
+                GroupingMode.IdleGap => $"Lines: {o.IdleGapMs} ms gap / {nl}",
+                _ => $"Lines: raw reads / {nl}",
+            };
+        }
+    }
     partial void OnShowTxChanged(bool value) => Document.Options = Document.Options with { ShowTx = value };
     partial void OnShowEventsChanged(bool value) => Document.Options = Document.Options with { ShowEvents = value };
     partial void OnIsPausedChanged(bool value) => OnPropertyChanged(nameof(PauseText));

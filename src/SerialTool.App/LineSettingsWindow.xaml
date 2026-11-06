@@ -1,0 +1,81 @@
+<Window x:Class="SerialTool.App.LineSettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:SerialTool.App"
+        Title="Line Grouping" SizeToContent="WidthAndHeight" ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        FontFamily="Segoe UI" FontSize="12">
+    <Window.Resources>
+        <local:EnumBoolConverter x:Key="EnumBool" />
+        <local:NotEmptyToVisibilityConverter x:Key="NotEmptyVis" />
+        <Style TargetType="GroupBox">
+            <Setter Property="Margin" Value="0,0,0,10" />
+            <Setter Property="Padding" Value="8,6" />
+        </Style>
+        <Style TargetType="RadioButton">
+            <Setter Property="Margin" Value="0,3" />
+        </Style>
+    </Window.Resources>
+
+    <StackPanel Margin="14" Width="440">
+        <GroupBox Header="Start a new line">
+            <StackPanel>
+                <RadioButton Content="On every raw read (and on newlines inside a read)"
+                             IsChecked="{Binding Grouping, Converter={StaticResource EnumBool}, ConverterParameter=RawRead}" />
+                <RadioButton Content="Only on newlines (lines can span several reads)"
+                             IsChecked="{Binding Grouping, Converter={StaticResource EnumBool}, ConverterParameter=Delimiter}" />
+                <StackPanel Orientation="Horizontal">
+                    <RadioButton Content="After an idle gap of" VerticalAlignment="Center"
+                                 IsChecked="{Binding Grouping, Converter={StaticResource EnumBool}, ConverterParameter=IdleGap}" />
+                    <TextBox Width="60" Margin="6,0" Text="{Binding IdleGapText, UpdateSourceTrigger=PropertyChanged}"
+                             IsEnabled="{Binding IdleGapEnabled}" VerticalContentAlignment="Center" />
+                    <TextBlock Text="ms (and on newlines)" VerticalAlignment="Center" />
+                </StackPanel>
+                <TextBlock Margin="20,2,0,0" Foreground="#777" TextWrapping="Wrap"
+                           Text="USB adapters deliver data in bursts (FTDI: every 16 ms by default), so very small gaps won't separate messages." />
+            </StackPanel>
+        </GroupBox>
+
+        <GroupBox Header="Newline">
+            <StackPanel>
+                <RadioButton Content="CR, LF or CR+LF (CR+LF counts as one)"
+                             IsChecked="{Binding Newline, Converter={StaticResource EnumBool}, ConverterParameter=Any}" />
+                <RadioButton Content="LF only" IsChecked="{Binding Newline, Converter={StaticResource EnumBool}, ConverterParameter=Lf}" />
+                <RadioButton Content="CR only" IsChecked="{Binding Newline, Converter={StaticResource EnumBool}, ConverterParameter=Cr}" />
+                <RadioButton Content="CR+LF only" IsChecked="{Binding Newline, Converter={StaticResource EnumBool}, ConverterParameter=CrLf}" />
+                <StackPanel Orientation="Horizontal">
+                    <RadioButton Content="Custom bytes (hex):" VerticalAlignment="Center"
+                                 IsChecked="{Binding Newline, Converter={StaticResource EnumBool}, ConverterParameter=Custom}" />
+                    <TextBox Width="140" Margin="6,0" Text="{Binding CustomDelimiterText, UpdateSourceTrigger=PropertyChanged}"
+                             IsEnabled="{Binding CustomEnabled}" FontFamily="Cascadia Mono, Consolas" VerticalContentAlignment="Center" />
+                </StackPanel>
+            </StackPanel>
+        </GroupBox>
+
+        <GroupBox Header="When TX is sent in the middle of an RX line">
+            <StackPanel IsEnabled="{Binding TxBreakEnabled}">
+                <RadioButton Content="End the RX line and show TX right away"
+                             IsChecked="{Binding TxBreak, Converter={StaticResource EnumBool}, ConverterParameter=ForceBreak}" />
+                <RadioButton Content="Keep the RX line intact; show TX after it ends (or after 1 s)"
+                             IsChecked="{Binding TxBreak, Converter={StaticResource EnumBool}, ConverterParameter=AfterLine}" />
+                <TextBlock Text="{Binding RawNote}" Foreground="#777" TextWrapping="Wrap" Margin="0,4,0,0"
+                           Visibility="{Binding RawNote, Converter={StaticResource NotEmptyVis}}" />
+            </StackPanel>
+        </GroupBox>
+
+        <StackPanel Orientation="Horizontal" Margin="2,0,0,10">
+            <TextBlock Text="Split lines longer than" VerticalAlignment="Center" />
+            <TextBox Width="70" Margin="6,0" Text="{Binding MaxLineText, UpdateSourceTrigger=PropertyChanged}" VerticalContentAlignment="Center" />
+            <TextBlock Text="bytes" VerticalAlignment="Center" />
+        </StackPanel>
+
+        <TextBlock Text="{Binding Error}" Foreground="#C62828" TextWrapping="Wrap" Margin="2,0,0,8"
+                   Visibility="{Binding Error, Converter={StaticResource NotEmptyVis}}" />
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Content="OK" Width="80" IsDefault="True" Click="OnOk" Margin="0,0,6,0" />
+            <Button Content="Apply" Width="80" Click="OnApply" Margin="0,0,6,0" />
+            <Button Content="Cancel" Width="80" IsCancel="True" />
+        </StackPanel>
+    </StackPanel>
+</Window>

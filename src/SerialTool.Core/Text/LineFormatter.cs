@@ -9,7 +9,7 @@ public enum ControlCharMode
     Hide,
     /// <summary>\r \n \t \0 and &lt;XX&gt; for other control / undecodable bytes.</summary>
     Escapes,
-    /// <summary>Unicode Control Pictures (U+2400 block).</summary>
+    /// <summary>Arrows for CR / LF / TAB (shown dimmed) and &lt;XX&gt; for other control / undecodable bytes.</summary>
     Symbols,
 }
 
@@ -124,7 +124,15 @@ public static class LineFormatter
                 }
                 break;
             case ControlCharMode.Symbols:
-                b.Append(c == 0x7F ? (char)0x2421 : (char)(0x2400 + c), CellStyle.Control);
+                // Full-size arrows for the common ones (Control Pictures like U+240D are illegibly small);
+                // everything else as <XX>.
+                switch (c)
+                {
+                    case 0x0D: b.Append((char)0x2190, CellStyle.Control); break; // CR  left arrow
+                    case 0x0A: b.Append((char)0x2193, CellStyle.Control); break; // LF  down arrow
+                    case 0x09: b.Append((char)0x2192, CellStyle.Control); break; // TAB right arrow
+                    default: b.Append($"<{c:X2}>", CellStyle.Control); break;
+                }
                 break;
             default:
                 b.Append(c switch

@@ -77,14 +77,21 @@
                 <MenuItem Header="_Control characters">
                     <MenuItem Header="_Hide" IsCheckable="True" IsChecked="{Binding ControlChars, Converter={StaticResource EnumBool}, ConverterParameter=Hide}" />
                     <MenuItem Header="_Escapes (\r &lt;02&gt;)" IsCheckable="True" IsChecked="{Binding ControlChars, Converter={StaticResource EnumBool}, ConverterParameter=Escapes}" />
-                    <MenuItem Header="_Symbols (␍ ␊)" IsCheckable="True" IsChecked="{Binding ControlChars, Converter={StaticResource EnumBool}, ConverterParameter=Symbols}" />
+                    <MenuItem Header="_Symbols (← ↓ &lt;02&gt;)" IsCheckable="True" IsChecked="{Binding ControlChars, Converter={StaticResource EnumBool}, ConverterParameter=Symbols}" />
                 </MenuItem>
                 <MenuItem Header="_Newline">
                     <MenuItem Header="_Any (CR, LF or CRLF)" IsCheckable="True" IsChecked="{Binding Newline, Converter={StaticResource EnumBool}, ConverterParameter=Any}" />
                     <MenuItem Header="_LF" IsCheckable="True" IsChecked="{Binding Newline, Converter={StaticResource EnumBool}, ConverterParameter=Lf}" />
                     <MenuItem Header="_CR" IsCheckable="True" IsChecked="{Binding Newline, Converter={StaticResource EnumBool}, ConverterParameter=Cr}" />
                     <MenuItem Header="CR_LF" IsCheckable="True" IsChecked="{Binding Newline, Converter={StaticResource EnumBool}, ConverterParameter=CrLf}" />
+                    <MenuItem Header="Cu_stom…" IsChecked="{Binding Newline, Mode=OneWay, Converter={StaticResource EnumBool}, ConverterParameter=Custom}" Click="OnLineSettings" />
                 </MenuItem>
+                <MenuItem Header="_Grouping">
+                    <MenuItem Header="_Raw reads" IsCheckable="True" IsChecked="{Binding Grouping, Converter={StaticResource EnumBool}, ConverterParameter=RawRead}" />
+                    <MenuItem Header="_Newline delimited" IsCheckable="True" IsChecked="{Binding Grouping, Converter={StaticResource EnumBool}, ConverterParameter=Delimiter}" />
+                    <MenuItem Header="_Idle gap" IsCheckable="True" IsChecked="{Binding Grouping, Converter={StaticResource EnumBool}, ConverterParameter=IdleGap}" />
+                </MenuItem>
+                <MenuItem Header="_Line grouping settings…" Click="OnLineSettings" />
                 <Separator />
                 <MenuItem Header="Show _TX" IsCheckable="True" IsChecked="{Binding ShowTx}" />
                 <MenuItem Header="Show _events" IsCheckable="True" IsChecked="{Binding ShowEvents}" />
@@ -145,6 +152,12 @@
             <StatusBarItem Content="{Binding RateText}" />
             <Separator />
             <StatusBarItem Content="{Binding BufferText}" />
+            <Separator />
+            <StatusBarItem>
+                <Hyperlink Click="OnLineSettings" Foreground="#333" TextDecorations="{x:Null}" ToolTip="Line grouping settings">
+                    <Run Text="{Binding GroupingText, Mode=OneWay}" />
+                </Hyperlink>
+            </StatusBarItem>
             <StatusBarItem Visibility="{Binding PendingWrites, Converter={StaticResource NonZeroVis}}">
                 <StackPanel Orientation="Horizontal">
                     <TextBlock VerticalAlignment="Center" Foreground="#B26A00">
