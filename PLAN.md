@@ -219,7 +219,7 @@ added as another data source without touching the views.
 - History (persisted, newest first, de-duplicated; each entry keeps its mode and line
   ending). Up/Down in the send box walks it; the "▾ Recent" dropdown (Alt+Down / F4)
   lists it with one-click "Send ▶" (resend without touching the box), click / Shift+Enter
-  to load for editing, ☆ to save as a macro, Del to remove.
+  to load for editing, "+ Macro" to save as a macro button, Del to remove.
 - Macro bar: named buttons, each with payload + mode + line ending; edit dialog
   (right-click: edit / move / delete); Ctrl+1..9 send the first nine; persisted.
 - Send file (raw), with optional inter-chunk delay, progress, and cancel.

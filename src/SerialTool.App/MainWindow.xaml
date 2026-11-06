@@ -239,7 +239,7 @@
                     <Button DockPanel.Dock="Right" Content="+ Macro" Padding="8,1" Margin="0" Click="OnAddMacro"
                             ToolTip="New macro (starts with the send box contents)" />
                     <TextBlock DockPanel.Dock="Left" Text="Macros" Foreground="#777" VerticalAlignment="Center" Margin="0,0,8,0" />
-                    <TextBlock Text="none yet — click + Macro, or ☆ on a recent send" Foreground="#999" VerticalAlignment="Center" FontStyle="Italic"
+                    <TextBlock Text="none yet — click + Macro here, or + Macro next to an entry in ▾ Recent" Foreground="#999" VerticalAlignment="Center" FontStyle="Italic"
                                Visibility="{Binding Macros.Count, Converter={StaticResource ZeroVis}}" />
                     <ItemsControl ItemsSource="{Binding Macros}" ToolTip="Click to send · right-click to edit · Ctrl+1…9 send the first nine">
                         <ItemsControl.ItemsPanel>
@@ -302,10 +302,10 @@
                         <ListBox.ItemTemplate>
                             <DataTemplate>
                                 <DockPanel>
-                                    <Button DockPanel.Dock="Right" Content="✕" Style="{StaticResource FlatButton}" Foreground="#999"
+                                    <Button DockPanel.Dock="Right" Content="✕" Style="{StaticResource FlatButton}" Foreground="#777" FontSize="13"
                                             ToolTip="Remove from history" Click="OnRecentRemove" />
-                                    <Button DockPanel.Dock="Right" Content="☆" Style="{StaticResource FlatButton}" Foreground="#B08000"
-                                            ToolTip="Save as macro" Click="OnRecentSaveMacro" />
+                                    <Button DockPanel.Dock="Right" Content="+ Macro" Style="{StaticResource FlatButton}" Foreground="#8A6400"
+                                            ToolTip="Save as a macro button" Click="OnRecentSaveMacro" />
                                     <Button DockPanel.Dock="Right" Content="Send ▶" Style="{StaticResource FlatButton}" Foreground="#0B5CAD"
                                             FontWeight="SemiBold" ToolTip="Send again now (keeps this list open)" Click="OnRecentSend" />
                                     <TextBlock DockPanel.Dock="Right" Text="{Binding Tag}" Foreground="#888" FontSize="10" VerticalAlignment="Center" Margin="8,0" />
