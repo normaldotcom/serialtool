@@ -142,6 +142,22 @@ public sealed class PersistenceTests : IDisposable
     }
 
     [Fact]
+    public void Plain_transcript_has_no_display_symbols()
+    {
+        var lines = new List<string>();
+        var b = new TranscriptBuilder(Transcript() with { ControlChars = ControlCharMode.Plain }, lines.Add);
+        var data = new List<byte>(Encoding.ASCII.GetBytes("temp"));
+        data.Add(0x09);
+        data.AddRange(Encoding.ASCII.GetBytes("23.5"));
+        data.Add(0x1B);
+        data.AddRange(Encoding.ASCII.GetBytes("[0m"));
+        data.Add(0x0D);
+        data.Add(0x0A);
+        b.Feed(new CaptureEvent(_seq++, _ts += 1000, Direction.Rx, EventKind.Data, 0, data.ToArray()));
+        Assert.Equal(["temp    23.5<1B>[0m"], lines);
+    }
+
+    [Fact]
     public async Task Text_log_can_be_read_while_open()
     {
         string path = Path.Combine(_dir, "live.log");

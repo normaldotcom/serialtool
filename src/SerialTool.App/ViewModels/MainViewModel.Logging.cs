@@ -2,6 +2,7 @@ using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SerialTool.Core;
+using SerialTool.Core.Text;
 using SerialTool.Persistence;
 
 namespace SerialTool.App.ViewModels;
@@ -63,7 +64,7 @@ public sealed partial class MainViewModel
         Path.Combine(folder, Exporter.ExpandTemplate(template, PortForFileName, DateTime.Now) + LogWriter.ExtensionFor(format));
 
     public TranscriptOptions CurrentTranscriptOptions =>
-        new(Document.Options, Encoding, ControlChars, Timestamps, Document.Clock);
+        new(Document.Options, Encoding, ControlCharMode.Plain, Timestamps, Document.Clock); // logs are always plain text
 
     private SessionHeader CurrentHeader => SessionHeader.For(Document.Clock, ConnectionDescription);
 

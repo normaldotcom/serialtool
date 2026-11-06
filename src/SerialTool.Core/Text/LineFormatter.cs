@@ -11,6 +11,11 @@ public enum ControlCharMode
     Escapes,
     /// <summary>Arrows for CR / LF / TAB (shown dimmed) and &lt;XX&gt; for other control / undecodable bytes.</summary>
     Symbols,
+    /// <summary>
+    /// For log files and exports (not offered in the view): CR / LF dropped (each line ends with a newline anyway),
+    /// tabs expanded to spaces, &lt;XX&gt; for other control / undecodable bytes. Pure ASCII-safe text, nothing lost silently.
+    /// </summary>
+    Plain,
 }
 
 public enum CellStyle : byte
@@ -138,6 +143,7 @@ public static class LineFormatter
         switch (mode)
         {
             case ControlCharMode.Hide:
+            case ControlCharMode.Plain when c is 0x09 or 0x0A or 0x0D:
                 if (c == 0x09)
                 {
                     int spaces = TabSize - (b.Length % TabSize);
@@ -154,6 +160,9 @@ public static class LineFormatter
                     case 0x09: b.Append((char)0x2192, CellStyle.Control); break; // TAB right arrow
                     default: b.Append($"<{c:X2}>", CellStyle.Control); break;
                 }
+                break;
+            case ControlCharMode.Plain:
+                b.Append($"<{c:X2}>", CellStyle.Control);
                 break;
             default:
                 b.Append(c switch

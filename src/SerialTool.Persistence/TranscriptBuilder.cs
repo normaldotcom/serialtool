@@ -4,7 +4,10 @@ using SerialTool.Core.Text;
 
 namespace SerialTool.Persistence;
 
-/// <summary>How a text transcript looks: the same settings as the text view.</summary>
+/// <summary>
+/// How a text transcript looks: the text view's grouping, encoding and timestamps. Logs use
+/// <see cref="ControlCharMode.Plain"/> so the file is plain text whatever the view shows.
+/// </summary>
 public sealed record TranscriptOptions(
     ProjectionOptions Projection,
     TextEncodingKind Encoding,

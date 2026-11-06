@@ -20,6 +20,13 @@ public class LineFormatterTests
     }
 
     [Fact]
+    public void Plain_mode_drops_line_endings_expands_tabs_and_shows_other_controls()
+    {
+        Assert.Equal("ab      c<1B>[0m<00><FF>", F([0x61, 0x62, 0x09, 0x63, 0x1B, 0x5B, 0x30, 0x6D, 0x00, 0xFF, 0x0D, 0x0A],
+            TextEncodingKind.Ascii, ControlCharMode.Plain));
+    }
+
+    [Fact]
     public void Hide_mode_drops_controls_and_expands_tabs()
     {
         Assert.Equal("ab      c", F([0x61, 0x62, 0x09, 0x63, 0x0D, 0x0A], TextEncodingKind.Ascii, ControlCharMode.Hide));

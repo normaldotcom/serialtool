@@ -103,9 +103,11 @@ added as another data source without touching the views.
   not Hex.
 
 ### Logging
-- Text transcript follows the **current** view options (encoding, timestamps,
-  control-char display, event markers). Changing options mid-log changes the output
-  from that point on.
+- Text transcript follows the **current** view options (line grouping, encoding,
+  timestamps, event markers). Changing options mid-log changes the output from that
+  point on. Control characters are **always plain text** regardless of the view
+  (decision 2026-11-05): CR/LF dropped (each line ends with CRLF), tabs expanded,
+  other control/undecodable bytes as `<XX>`. Applies to export too.
 - Filename template, default `{port}_{date}_{time}.log` (e.g. `COM3_2026-11-05_143012.log`);
   extension depends on format (`.log` / `.bin` / `.stsession`). Configurable
   folder, plus an "auto-start log on connect" option.
