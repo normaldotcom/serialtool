@@ -23,4 +23,15 @@
     <SolidColorBrush x:Key="LedOffStroke" Color="#6A6A6A" />
     <SolidColorBrush x:Key="LedOn" Color="#2EB82E" />
     <SolidColorBrush x:Key="LedOnStroke" Color="#6EE06E" />
+    <SolidColorBrush x:Key="MenuText" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="MenuHover" Color="#3A3A3A" />
+    <SolidColorBrush x:Key="MenuDisabledText" Color="#6E6E6E" />
+    <SolidColorBrush x:Key="MenuGestureText" Color="#A0A0A0" />
+    <SolidColorBrush x:Key="MenuPopupBackground" Color="#2C2C2C" />
+    <SolidColorBrush x:Key="MenuPopupBorder" Color="#4A4A4A" />
+    <SolidColorBrush x:Key="MenuSeparator" Color="#404040" />
+    <SolidColorBrush x:Key="CheckAccent" Color="#4CC2FF" />
+    <SolidColorBrush x:Key="CheckGlyph" Color="#000000" />
+    <SolidColorBrush x:Key="CheckBorder" Color="#9A9A9A" />
+    <SolidColorBrush x:Key="CheckBackground" Color="#272727" />
 </ResourceDictionary>

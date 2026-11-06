@@ -25,6 +25,7 @@
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Padding" Value="5,0" />
+            <Setter Property="MinHeight" Value="0" />
             <Setter Property="Margin" Value="1,0" />
             <Setter Property="Cursor" Value="Hand" />
         </Style>
@@ -52,7 +53,7 @@
         <Style TargetType="ComboBox" BasedOn="{StaticResource {x:Type ComboBox}}">
             <Setter Property="Margin" Value="0,0,6,0" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
-            <Setter Property="Padding" Value="8,4,0,4" />
+            <Setter Property="Padding" Value="8,2,0,2" />
             <Setter Property="MinWidth" Value="0" />
         </Style>
         <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
@@ -214,6 +215,13 @@
 
         <!-- Status bar -->
         <StatusBar DockPanel.Dock="Bottom">
+            <StatusBar.Resources>
+                <!-- small inline buttons that don't make the bar taller -->
+                <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                    <Setter Property="MinHeight" Value="0" />
+                    <Setter Property="Padding" Value="6,0" />
+                </Style>
+            </StatusBar.Resources>
             <StatusBarItem Content="{Binding StateText}" FontWeight="SemiBold" />
             <Separator />
             <StatusBarItem Content="{Binding RxText}" />
@@ -307,7 +315,7 @@
                               IsChecked="{Binding IsRecentOpen}" IsEnabled="{Binding HasHistory}"
                               ToolTip="Recent sends — pick one to resend (Alt+↓ or F4 in the send box)" />
                 <TextBox x:Name="SendBox" Text="{Binding SendText, UpdateSourceTrigger=PropertyChanged}" FontFamily="Cascadia Mono, Consolas"
-                         FontSize="13" VerticalContentAlignment="Center" Padding="2,3" PreviewKeyDown="OnSendBoxKeyDown" />
+                         FontSize="13" VerticalContentAlignment="Center" Padding="4,1" PreviewKeyDown="OnSendBoxKeyDown" />
             </DockPanel>
         </Border>
 

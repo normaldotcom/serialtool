@@ -18,7 +18,7 @@ internal static class DevScenario
     public static void AttachIfRequested(MainWindow window, MainViewModel vm)
     {
         string? scenario = Environment.GetEnvironmentVariable("SERIALTOOL_SCENARIO");
-        if (scenario is not ("send" or "log" or "theme" or "reconnect")) return;
+        if (scenario is not ("send" or "log" or "theme" or "reconnect" or "styles")) return;
         window.Loaded += async (_, _) =>
         {
             var report = new StringBuilder();
@@ -27,6 +27,7 @@ internal static class DevScenario
                 if (scenario == "log") await RunLogAsync(window, vm, report);
                 else if (scenario == "theme") await RunThemeAsync(window, vm, report);
                 else if (scenario == "reconnect") await RunReconnectAsync(vm, report);
+                else if (scenario == "styles") DumpStyles(window, report);
                 else await RunAsync(window, vm, report);
             }
             catch (Exception ex)
@@ -221,6 +222,21 @@ internal static class DevScenario
             if (window.RecentPopup.Child is FrameworkElement popup) SnapshotElement(popup, Path.Combine(dir, $"m7-{n}-recent.png"));
             vm.IsRecentOpen = false;
 
+            // Open menu: View, then its Timestamps submenu
+            var menu = FindChild<System.Windows.Controls.Menu>(window)!;
+            var viewMenu = menu.Items.OfType<System.Windows.Controls.MenuItem>().First(m => (string)m.Header == "_View");
+            viewMenu.IsSubmenuOpen = true;
+            await Task.Delay(400);
+            var sub = viewMenu.Items.OfType<System.Windows.Controls.MenuItem>().First();
+            sub.IsSubmenuOpen = true;
+            await Task.Delay(400);
+            if (viewMenu.Template.FindName("PART_Popup", viewMenu) is Popup { Child: FrameworkElement vp })
+                SnapshotElement(vp, Path.Combine(dir, $"m7-{n}-menu.png"));
+            if (sub.Template.FindName("PART_Popup", sub) is Popup { Child: FrameworkElement sp })
+                SnapshotElement(sp, Path.Combine(dir, $"m7-{n}-submenu.png"));
+            sub.IsSubmenuOpen = false;
+            viewMenu.IsSubmenuOpen = false;
+
             Window[] dialogs =
             [
                 new LogWindow(vm),
@@ -281,6 +297,42 @@ internal static class DevScenario
         await vm.ToggleConnectionCommand.ExecuteAsync(null);
         await Task.Delay(1500);
         report.AppendLine($"after stop waiting: state={vm.State} waiting={vm.IsWaitingForDevice} button='{vm.ConnectButtonText}'");
+    }
+
+    /// <summary>Writes the theme's implicit control styles as XAML to SERIALTOOL_SHOT (for tuning sizes).</summary>
+    private static void DumpStyles(MainWindow window, StringBuilder report)
+    {
+        string dir = Environment.GetEnvironmentVariable("SERIALTOOL_SHOT") ?? Path.GetTempPath();
+        Type[] types =
+        [
+            typeof(System.Windows.Controls.Menu), typeof(System.Windows.Controls.MenuItem), typeof(System.Windows.Controls.ContextMenu),
+            typeof(System.Windows.Controls.Primitives.StatusBar), typeof(System.Windows.Controls.Primitives.StatusBarItem),
+            typeof(System.Windows.Controls.RadioButton), typeof(System.Windows.Controls.CheckBox), typeof(System.Windows.Controls.ComboBox),
+            typeof(System.Windows.Controls.ComboBoxItem), typeof(System.Windows.Controls.Button), typeof(ToggleButton),
+            typeof(System.Windows.Controls.TextBox), typeof(System.Windows.Controls.Separator), typeof(System.Windows.Controls.GroupBox),
+        ];
+        foreach (var t in types)
+        {
+            var style = Application.Current.TryFindResource(t) as Style;
+            string xaml;
+            try { xaml = style is null ? "(none)" : System.Windows.Markup.XamlWriter.Save(style); }
+            catch (Exception ex) { xaml = "(save failed) " + ex.Message; }
+            File.WriteAllText(Path.Combine(dir, t.Name + ".xaml"), xaml);
+            report.AppendLine($"{t.Name}: {xaml.Length} chars");
+        }
+        foreach (var key in new[] { "MenuItemSeparatorStyle", "ContextMenuMenuItemStyle" })
+            report.AppendLine($"{key}: {Application.Current.TryFindResource(key) is not null}");
+    }
+
+    private static T? FindChild<T>(DependencyObject root) where T : DependencyObject
+    {
+        for (int i = 0; i < System.Windows.Media.VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            var c = System.Windows.Media.VisualTreeHelper.GetChild(root, i);
+            if (c is T t) return t;
+            if (FindChild<T>(c) is { } found) return found;
+        }
+        return null;
     }
 
     private static void SnapshotElement(FrameworkElement el, string path)

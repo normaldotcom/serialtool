@@ -16,6 +16,7 @@ internal static class ThemeManager
     private static AppTheme _theme = AppTheme.System;
     private static Dictionary<string, Dictionary<string, string>>? _overrides;
     private static bool _listening;
+    private static ResourceDictionary? _controls;
 
     public static bool IsDark { get; private set; }
 
@@ -27,6 +28,8 @@ internal static class ThemeManager
         {
             _listening = true;
             SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
+            EventManager.RegisterClassHandler(typeof(System.Windows.Controls.ComboBox), FrameworkElement.LoadedEvent,
+                new RoutedEventHandler(OnComboBoxLoaded));
         }
         Update();
     }
@@ -48,14 +51,34 @@ internal static class ThemeManager
 
         app.ThemeMode = dark ? ThemeMode.Dark : ThemeMode.Light;
 
+        // Ours go after Fluent's (re-added on every switch, in case Fluent re-inserted its own): the sizing
+        // styles first (loaded once, after Fluent so their BasedOn finds its styles), then the colors.
         var merged = app.Resources.MergedDictionaries;
-        var mine = merged.FirstOrDefault(d => d.Contains("AppBackground")); // ours, not one of Fluent's
-        if (mine is not null) merged.Remove(mine);
+        var colors = merged.FirstOrDefault(d => d.Contains("AppBackground"));
+        if (colors is not null) merged.Remove(colors);
+        if (_controls is not null) merged.Remove(_controls);
+        _controls ??= new ResourceDictionary { Source = new Uri("pack://application:,,,/Themes/Controls.xaml") };
+        merged.Add(_controls);
         merged.Add(new ResourceDictionary { Source = new Uri($"pack://application:,,,/Themes/{(dark ? "Dark" : "Light")}.xaml") });
 
         string key = dark ? "Dark" : "Light";
-        var colors = _overrides?.FirstOrDefault(kv => string.Equals(kv.Key, key, StringComparison.OrdinalIgnoreCase)).Value;
-        ViewPalette.Current = (dark ? ViewPalette.Dark : ViewPalette.Light).With(colors);
+        var overrides = _overrides?.FirstOrDefault(kv => string.Equals(kv.Key, key, StringComparison.OrdinalIgnoreCase)).Value;
+        ViewPalette.Current = (dark ? ViewPalette.Dark : ViewPalette.Light).With(overrides);
+    }
+
+    /// <summary>
+    /// The Fluent ComboBox template gives its editable text box a fixed 32px-tall padding (not a resource), which
+    /// does not fit the 24px combo boxes; shrink it once the template is applied.
+    /// </summary>
+    private static void OnComboBoxLoaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is System.Windows.Controls.ComboBox { IsEditable: true } combo
+            && combo.Template?.FindName("PART_EditableTextBox", combo) is System.Windows.Controls.TextBox text)
+        {
+            text.Padding = new Thickness(8, 0, 38, 0);
+            text.MinHeight = 0;
+            text.VerticalContentAlignment = VerticalAlignment.Center;
+        }
     }
 
     /// <summary>Windows "Choose your app mode" setting (Settings › Personalization › Colors).</summary>
