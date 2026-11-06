@@ -122,8 +122,16 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     };
 
     public string Title => IsConnected && _source is not null
-        ? $"{ConnectionDescription} — SerialTool"
-        : SessionFileName is not null ? $"{SessionFileName} — SerialTool" : "SerialTool";
+        ? $"{ConnectionDescription} — {AppName}"
+        : SessionFileName is not null ? $"{SessionFileName} — {AppName}" : AppName;
+
+    /// <summary>"SerialTool" plus the build's version (git describe --tags --always, stamped at build time).</summary>
+    public static readonly string AppName = "SerialTool " + AppVersion;
+
+    public static string AppVersion =>
+        typeof(MainViewModel).Assembly
+            .GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+            .OfType<System.Reflection.AssemblyInformationalVersionAttribute>().FirstOrDefault()?.InformationalVersion ?? "unknown";
 
     /// <summary>Port and settings, e.g. "COM3 115200 8N1" (used in the title and log headers).</summary>
     public string ConnectionDescription => _source is null

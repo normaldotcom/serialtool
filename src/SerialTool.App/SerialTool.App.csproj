@@ -25,4 +25,20 @@
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
   </ItemGroup>
 
+  <!-- App version: output of "git describe" with the tags and always options (shown in the window title); "unknown" outside a git checkout. -->
+  <PropertyGroup>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+  </PropertyGroup>
+  <Target Name="SetGitVersion" BeforeTargets="GetAssemblyVersion;GenerateAssemblyInfo">
+    <Exec Command="git describe --tags --always" ConsoleToMSBuild="true" IgnoreExitCode="true" EchoOff="true"
+          StandardOutputImportance="low" StandardErrorImportance="low" WorkingDirectory="$(MSBuildProjectDirectory)">
+      <Output TaskParameter="ConsoleOutput" PropertyName="GitDescribe" />
+      <Output TaskParameter="ExitCode" PropertyName="GitExitCode" />
+    </Exec>
+    <PropertyGroup>
+      <GitDescribe Condition="'$(GitExitCode)' != '0' or '$(GitDescribe)' == ''">unknown</GitDescribe>
+      <InformationalVersion>$(GitDescribe)</InformationalVersion>
+    </PropertyGroup>
+  </Target>
+
 </Project>
