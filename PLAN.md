@@ -14,7 +14,7 @@ added as another data source without touching the views.
 | UI | WPF, MVVM (CommunityToolkit.Mvvm) |
 | Serial I/O | Own Win32 wrapper (P/Invoke, overlapped I/O) — not System.IO.Ports |
 | Ports per window | One. Run multiple instances for multiple ports. No CLI arguments; never auto-connect on start |
-| Layout | Text view always visible; hex view in a split pane, **hidden by default**, toggled via toolbar button / View menu (Ctrl+H) |
+| Layout | One view at a time: text view by default; toolbar button / View menu / Ctrl+H switches to the hex view (which has its own ASCII column) and back. The selection carries over |
 | Chunking / timestamps | Default: one chunk per raw OS read (**each raw read starts a new line**). Setting to switch to *line delimiter* or *idle gap (ms)* |
 | TX in views | Yes, interleaved and color-coded; toggle to hide TX |
 | Input | Dedicated send box (text / hex / escaped modes) + history + macro button bar. Typing in views does not send |
@@ -57,7 +57,7 @@ added as another data source without touching the views.
   when timestamps are shown; otherwise bytes flow continuously at N bytes per row.
   (Implemented as a second projection with an internal `Continuous` grouping mode:
   rows break only on direction change, events, or the max line length. It exists only
-  while the hex pane is visible and timestamps are off.)
+  while the hex view is shown and timestamps are off.)
 - Offsets are relative to the start of the line (continuous mode: the run of one direction).
 
 ### Wrapping
@@ -205,7 +205,7 @@ added as another data source without touching the views.
   printable, high-bit), theme-configurable.
 - **Linked selection**: selecting a range in either view highlights the same
   bytes in the other (shared `(seq, offset)` addressing — `StreamPos`/`ByteSelection`),
-  and the other view scrolls to show it. Text view: caret-boundary selection
+  and the view switched to scrolls to show it. Text view: caret-boundary selection
   (formatted cells map back to source bytes); hex view: whole-byte selection.
   Double-click selects a line; Ctrl+A / Ctrl+C / Esc. Basic copy (text view: decoded
   text; hex view: space-separated hex) until the copy-as formats in milestone 5.
@@ -277,7 +277,7 @@ SerialTool.slnx
 2. **App shell**: connection panel, text view (raw-read chunks, timestamps, colors,
    inline events, wrap toggle), send box. Throughput benchmark with FakeSource.
 3. **Grouping modes**: delimiter / idle-gap projections, TX-interleave setting, settings UI.
-4. **Hex view**: virtualized control, color coding, toggle/split, linked selection.
+4. **Hex view**: virtualized control, color coding, text/hex switch, shared selection.
 5. **Macros, history, search, copy formats.**
 6. **Logging / export / session reopen.**
 7. **Polish**: dark/light theme, settings persistence,

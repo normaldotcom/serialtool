@@ -31,33 +31,24 @@ public partial class MainWindow : Window
 
     private void OnExit(object sender, RoutedEventArgs e) => Close();
 
-    private GridLength _hexHeight = new(1, GridUnitType.Star);
-
-    /// <summary>Shows/hides the hex split pane, remembering the splitter position.</summary>
+    /// <summary>Switches between the text and hex views, keeping focus and showing the selection.</summary>
     private void ApplyHexVisibility()
     {
-        bool show = _vm.ShowHex;
-        if (show)
+        bool hex = _vm.ShowHex;
+        Controls.LogViewBase shown = hex ? HexView : LogView, hidden = hex ? LogView : HexView;
+        bool hadFocus = hidden.IsKeyboardFocusWithin;
+        hidden.Visibility = Visibility.Collapsed;
+        shown.Visibility = Visibility.Visible;
+        if (hadFocus) shown.Focus();
+        if (!_vm.Selection.IsEmpty)
         {
-            SplitterRow.Height = new GridLength(5);
-            HexRow.Height = _hexHeight;
-            HexRow.MinHeight = 60;
+            var start = _vm.Selection.Start;
+            Dispatcher.BeginInvoke(() => shown.Reveal(start), System.Windows.Threading.DispatcherPriority.Loaded);
         }
-        else
-        {
-            if (HexRow.Height.Value > 0) _hexHeight = HexRow.Height;
-            // The splitter turns the text row into pixels; give it back the star so it fills the space.
-            ViewsGrid.RowDefinitions[0].Height = new GridLength(1, GridUnitType.Star);
-            HexRow.MinHeight = 0;
-            SplitterRow.Height = new GridLength(0);
-            HexRow.Height = new GridLength(0);
-        }
-        HexSplitter.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
-        HexView.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    /// <summary>The view that Edit menu commands act on: the focused one, else the text view.</summary>
-    private Controls.LogViewBase ActiveView => HexView.IsKeyboardFocusWithin ? HexView : LogView;
+    /// <summary>The view that Edit menu commands act on (the visible one).</summary>
+    private Controls.LogViewBase ActiveView => _vm.ShowHex ? HexView : LogView;
 
     private void OnCopy(object sender, RoutedEventArgs e) => ActiveView.CopySelection();
 

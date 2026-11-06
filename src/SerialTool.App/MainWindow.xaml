@@ -149,7 +149,7 @@
                     <ToggleButton Content="{Binding PauseText}" IsChecked="{Binding IsPaused}" ToolTip="Pause display (capture continues)" />
                     <Button Content="Clear" Command="{Binding ClearCommand}" ToolTip="Clear buffer (Ctrl+L)" Margin="4,0,0,0" />
                     <ToggleButton Content="Wrap" IsChecked="{Binding WordWrap}" ToolTip="Word wrap" Margin="4,0,0,0" />
-                    <ToggleButton Content="Hex" IsChecked="{Binding ShowHex}" ToolTip="Show hex view (Ctrl+H)" />
+                    <ToggleButton Content="Hex" IsChecked="{Binding ShowHex}" ToolTip="Switch between text and hex view (Ctrl+H)" />
                     <ToggleButton Content="TX" IsChecked="{Binding ShowTx}" ToolTip="Show transmitted data" />
                     <ToggleButton Content="Events" IsChecked="{Binding ShowEvents}" ToolTip="Show connection / pin / error events" />
                 </WrapPanel>
@@ -203,18 +203,11 @@
             </DockPanel>
         </Border>
 
-        <!-- Text view, with the hex view in a split pane below (hidden by default) -->
-        <Grid x:Name="ViewsGrid">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="*" MinHeight="60" />
-                <RowDefinition x:Name="SplitterRow" Height="0" />
-                <RowDefinition x:Name="HexRow" Height="0" />
-            </Grid.RowDefinitions>
+        <!-- Text view or hex view (Ctrl+H switches); they share the selection -->
+        <Grid>
             <controls:LogTextView x:Name="LogView" Document="{Binding Document}" WordWrap="{Binding WordWrap}"
                                   IsPinned="{Binding IsPinned, Mode=TwoWay}" Selection="{Binding Selection}" />
-            <GridSplitter x:Name="HexSplitter" Grid.Row="1" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
-                          Background="#DDDDDD" ResizeBehavior="PreviousAndNext" Visibility="Collapsed" />
-            <controls:HexView x:Name="HexView" Grid.Row="2" Document="{Binding HexDocument}" BytesPerRow="{Binding HexBytesPerRow}"
+            <controls:HexView x:Name="HexView" Document="{Binding HexDocument}" BytesPerRow="{Binding HexBytesPerRow}"
                               IsPinned="{Binding HexPinned, Mode=TwoWay}" Selection="{Binding Selection}" Visibility="Collapsed" />
         </Grid>
     </DockPanel>
