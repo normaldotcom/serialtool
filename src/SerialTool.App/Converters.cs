@@ -1,0 +1,70 @@
+using System.Globalization;
+using System.Windows;
+using System.Windows.Data;
+
+namespace SerialTool.App;
+
+/// <summary>Binds an enum property to a radio-style checkable item: ConverterParameter is the enum member name.</summary>
+public sealed class EnumBoolConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture) =>
+        value?.ToString() == parameter?.ToString();
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
+        value is true && parameter is string name ? Enum.Parse(targetType, name) : Binding.DoNothing;
+}
+
+/// <summary>Friendly display names for enum values in combo boxes.</summary>
+public sealed class EnumDisplayConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture) => value switch
+    {
+        Serial.StopBits.One => "1",
+        Serial.StopBits.OnePointFive => "1.5",
+        Serial.StopBits.Two => "2",
+        Serial.FlowControl.None => "No flow control",
+        Serial.FlowControl.RtsCts => "RTS/CTS",
+        Serial.FlowControl.DtrDsr => "DTR/DSR",
+        Serial.FlowControl.XonXoff => "XON/XOFF",
+        Core.Text.LineEnding.None => "No line ending",
+        Core.Text.LineEnding.Cr => "CR",
+        Core.Text.LineEnding.Lf => "LF",
+        Core.Text.LineEnding.CrLf => "CR+LF",
+        Core.Text.SendMode.Text => "Text",
+        Core.Text.SendMode.Hex => "Hex",
+        Core.Text.SendMode.Escaped => "Escaped",
+        _ => value?.ToString() ?? string.Empty,
+    };
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
+        DependencyProperty.UnsetValue;
+}
+
+public sealed class BoolToVisibilityConverter : IValueConverter
+{
+    public bool Invert { get; set; }
+
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture) =>
+        (value is true) ^ Invert ? Visibility.Visible : Visibility.Collapsed;
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
+        DependencyProperty.UnsetValue;
+}
+
+public sealed class NotEmptyToVisibilityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture) =>
+        value is string { Length: > 0 } ? Visibility.Visible : Visibility.Collapsed;
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
+        DependencyProperty.UnsetValue;
+}
+
+public sealed class NonZeroToVisibilityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture) =>
+        value is int n && n != 0 ? Visibility.Visible : Visibility.Collapsed;
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
+        DependencyProperty.UnsetValue;
+}
