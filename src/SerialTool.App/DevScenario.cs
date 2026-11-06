@@ -17,13 +17,15 @@ internal static class DevScenario
 {
     public static void AttachIfRequested(MainWindow window, MainViewModel vm)
     {
-        if (Environment.GetEnvironmentVariable("SERIALTOOL_SCENARIO") != "send") return;
+        string? scenario = Environment.GetEnvironmentVariable("SERIALTOOL_SCENARIO");
+        if (scenario is not ("send" or "log")) return;
         window.Loaded += async (_, _) =>
         {
             var report = new StringBuilder();
             try
             {
-                await RunAsync(window, vm, report);
+                if (scenario == "log") await RunLogAsync(window, vm, report);
+                else await RunAsync(window, vm, report);
             }
             catch (Exception ex)
             {
@@ -119,6 +121,64 @@ internal static class DevScenario
         File.Delete(file);
 
         report.AppendLine($"settings file exists: {File.Exists(Environment.GetEnvironmentVariable("SERIALTOOL_SETTINGS") ?? "")}");
+    }
+
+    /// <summary>Logs in every format from a fake port, exports, then reopens the session log.</summary>
+    private static async Task RunLogAsync(MainWindow window, MainViewModel vm, StringBuilder report)
+    {
+        string dir = Environment.GetEnvironmentVariable("SERIALTOOL_SHOT") ?? Path.GetTempPath();
+        string logDir = Path.Combine(dir, "logs");
+        if (Directory.Exists(logDir)) Directory.Delete(logDir, true);
+        vm.LogFolder = logDir;
+        vm.Grouping = GroupingMode.Delimiter;
+
+        vm.SelectedPort = vm.Ports.First(p => p.Name == "FAKE-ECHO");
+        await vm.ConnectAsync();
+        var paths = new List<string>();
+        foreach (var format in Enum.GetValues<Persistence.LogFormat>())
+        {
+            vm.LogFormat = format;
+            vm.LogTemplate = "{port}_" + format;
+            await vm.StartLogAsync();
+            paths.Add(vm.LogPath!);
+            vm.SendText = $"hello {format}";
+            await vm.SendCommand.ExecuteAsync(null);
+            await Task.Delay(400);
+            await vm.StopLogAsync();
+        }
+        vm.SendText = "last line";
+        await vm.SendCommand.ExecuteAsync(null);
+        await Task.Delay(300);
+        foreach (var p in paths) report.AppendLine($"log {Path.GetFileName(p)}: {new FileInfo(p).Length} bytes");
+        string nl = Environment.NewLine + "  ";
+        report.AppendLine("text log:" + nl + string.Join(nl, File.ReadAllLines(paths[0])));
+        report.AppendLine("raw log: " + Encoding.ASCII.GetString(File.ReadAllBytes(paths[1])).Replace(Environment.NewLine, "<CRLF>"));
+
+        string exportSession = Path.Combine(logDir, "export.stsession");
+        await vm.ExportAsync(Persistence.LogFormat.Session, exportSession);
+        await vm.ExportAsync(Persistence.LogFormat.Text, Path.Combine(logDir, "export.log"));
+        report.AppendLine("export.log:" + nl + string.Join(nl, File.ReadAllLines(Path.Combine(logDir, "export.log"))));
+
+        // Remember how the live view showed the first data line, then reopen the exported session.
+        long firstData = Enumerable.Range(0, (int)vm.Document.LineCount).Select(i => vm.Document.FirstLine + i)
+            .First(l => vm.Document.GetLine(l).IsData);
+        string liveTs = vm.Document.GetTimestamp(firstData), liveText = vm.Document.GetText(firstData).Text;
+        long liveLines = vm.Document.LineCount;
+        await vm.DisconnectAsync();
+        bool ok = await vm.OpenSessionAsync(exportSession);
+        long reFirst = Enumerable.Range(0, (int)vm.Document.LineCount).Select(i => vm.Document.FirstLine + i)
+            .First(l => vm.Document.GetLine(l).IsData);
+        report.AppendLine($"reopen ok={ok}, lines {vm.Document.LineCount} (live {liveLines}), title '{vm.Title}'");
+        report.AppendLine($"first data line live:   {liveTs} {liveText}");
+        report.AppendLine($"first data line reopen: {vm.Document.GetTimestamp(reFirst)} {vm.Document.GetText(reFirst).Text}");
+        report.AppendLine($"status: {vm.StateDetail}");
+        await Task.Delay(300);
+        Benchmark.Snapshot(window, Path.Combine(dir, "m6-session.png"));
+
+        // Bad file
+        File.WriteAllText(Path.Combine(logDir, "bad.stsession"), "nope");
+        ok = await vm.OpenSessionAsync(Path.Combine(logDir, "bad.stsession"));
+        report.AppendLine($"bad file ok={ok}: {vm.StateDetail}");
     }
 
     private static void SnapshotElement(FrameworkElement el, string path)

@@ -34,12 +34,24 @@ public sealed class TextDocument
     public TextDocument(EventStore store, SessionClock clock)
     {
         _store = store;
-        Clock = clock;
+        _clock = clock;
         _projection = new LineProjection(_options);
         _generation = store.Generation;
     }
 
-    public SessionClock Clock { get; }
+    /// <summary>Maps timestamps to wall-clock time. Replaced when a saved session is opened.</summary>
+    public SessionClock Clock
+    {
+        get => _clock;
+        set
+        {
+            if (ReferenceEquals(value, _clock)) return;
+            _clock = value;
+            Updated?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    private SessionClock _clock;
     public EventStore Store => _store;
 
     public long FirstLine => _projection.FirstLine;

@@ -113,6 +113,12 @@ added as another data source without touching the views.
 - No rotation. Disk-full or write errors stop the log with a visible error; capture
   continues.
 - Written on a background thread from the event channel. It never blocks the read thread.
+- Implementation notes: TX lines in text transcripts are prefixed `TX> `; a transcript line
+  that stays open (e.g. a prompt with no newline) is written after 1 s of silence, and any
+  later bytes of it follow on a continuation line. Auto-start opens the log just before the
+  port so it includes the Connected marker. The log is a live file (shared read), so it can
+  be tailed while recording. File › Log Settings… / Start Logging… / Stop Logging; status bar
+  shows the file and size (click to show it in Explorer).
 
 ### Timestamps
 - All event timestamps come from `Stopwatch.GetTimestamp()` (QPC, monotonic).
@@ -122,8 +128,11 @@ added as another data source without touching the views.
   `Stopwatch.Frequency`.
 
 ### Session reopen
-- `ReplaySource` loads the whole session file into the store instantly for browsing.
-  No timed playback.
+- Opening a session (File › Open Session…, Ctrl+O, or drag-and-drop a `.stsession`)
+  loads the whole file into the store instantly for browsing (disconnects first). No timed
+  playback. Timestamps are shown as recorded (the session's start time + Stopwatch
+  frequency). A file cut short by a crash opens with the complete records. (Implemented
+  in the view model rather than as a `ReplaySource`: there is nothing to "open" or stream.)
 
 ## Architecture
 
@@ -283,7 +292,8 @@ SerialTool.slnx
 3. **Grouping modes**: delimiter / idle-gap projections, TX-interleave setting, settings UI.
 4. **Hex view**: virtualized control, color coding, text/hex switch, shared selection.
 5. **Macros, history (+ recent-sends dropdown), search, copy formats, send file.**
-6. **Logging / export / session reopen.**
+6. **Logging / export / session reopen.** (`SerialTool.Persistence`: session format,
+   log writers, transcript builder, exporter.)
 7. **Polish**: dark/light theme, settings persistence,
    unplug/auto-reconnect, release publish profile: `SelfContained=false`,
    `PublishSingleFile=true`, `RuntimeIdentifier=win-x64`, `SatelliteResourceLanguages=en`,

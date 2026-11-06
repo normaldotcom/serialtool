@@ -1,0 +1,50 @@
+<Window x:Class="SerialTool.App.LogWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Log to File" SizeToContent="Height" Width="520" ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        FontFamily="Segoe UI" FontSize="12">
+    <Window.Resources>
+        <Style TargetType="RadioButton">
+            <Setter Property="Margin" Value="0,3" />
+        </Style>
+    </Window.Resources>
+    <StackPanel Margin="14">
+        <GroupBox Header="Format" Padding="8,6" Margin="0,0,0,10">
+            <StackPanel>
+                <RadioButton x:Name="TextRadio" Checked="OnChanged">
+                    <TextBlock><Run Text="Text transcript (.log)" FontWeight="SemiBold" /><Run Text=" — what the text view shows: line grouping, timestamps, control characters, TX and events" Foreground="#666" /></TextBlock>
+                </RadioButton>
+                <RadioButton x:Name="RawRadio" Checked="OnChanged">
+                    <TextBlock><Run Text="Raw received bytes (.bin)" FontWeight="SemiBold" /><Run Text=" — RX only, exactly as received" Foreground="#666" /></TextBlock>
+                </RadioButton>
+                <RadioButton x:Name="SessionRadio" Checked="OnChanged">
+                    <TextBlock TextWrapping="Wrap"><Run Text="Session (.stsession)" FontWeight="SemiBold" /><Run Text=" — every event with timestamps; reopen it later with File › Open Session" Foreground="#666" /></TextBlock>
+                </RadioButton>
+            </StackPanel>
+        </GroupBox>
+
+        <TextBlock Text="Folder" />
+        <DockPanel Margin="0,3,0,8">
+            <Button DockPanel.Dock="Right" Content="Browse…" Margin="6,0,0,0" Padding="10,2" Click="OnBrowse" />
+            <TextBox x:Name="FolderBox" Padding="2,3" TextChanged="OnChanged" />
+        </DockPanel>
+
+        <TextBlock Text="File name ({port}, {date}, {time})" />
+        <TextBox x:Name="TemplateBox" Margin="0,3,0,3" Padding="2,3" TextChanged="OnChanged" />
+        <TextBlock x:Name="PreviewText" Foreground="#666" TextTrimming="CharacterEllipsis" Margin="0,0,0,8" />
+
+        <CheckBox x:Name="AutoStartBox" Content="Start logging automatically on connect" Margin="0,2,0,0" />
+
+        <TextBlock Foreground="#777" Margin="0,10,0,0" TextWrapping="Wrap"
+                   Text="The log records from now on. To save what is already in the buffer, use File › Export Buffer." />
+        <TextBlock x:Name="ErrorText" Foreground="#C62828" Margin="0,8,0,0" TextWrapping="Wrap" Visibility="Collapsed" />
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
+            <Button Content="Start Logging" IsDefault="True" Padding="12,2" Margin="0,0,6,0" Click="OnStart" />
+            <Button Content="Save Settings" Padding="12,2" Margin="0,0,6,0" Click="OnSave"
+                    ToolTip="Keep these settings (e.g. auto-start) without starting a log now" />
+            <Button Content="Cancel" IsCancel="True" Width="80" />
+        </StackPanel>
+    </StackPanel>
+</Window>

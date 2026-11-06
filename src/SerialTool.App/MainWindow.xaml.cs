@@ -47,6 +47,12 @@ public partial class MainWindow : Window
             e.Handled = true;
             return;
         }
+        if (e.Key == Key.O && Keyboard.Modifiers == ModifierKeys.Control)
+        {
+            OnOpenSession(this, e);
+            e.Handled = true;
+            return;
+        }
         base.OnPreviewKeyDown(e);
     }
 
@@ -325,4 +331,89 @@ public partial class MainWindow : Window
         _vm.SendFileDelayMs = dlg.DelayMs;
         await _vm.SendFileAsync(dlg.FilePath, dlg.ChunkSize, dlg.DelayMs);
     }
+
+    // ------------------------------------------------------------------ logging / export / sessions
+
+    private async void OnStartLog(object sender, RoutedEventArgs e)
+    {
+        var dlg = new LogWindow(_vm) { Owner = this };
+        if (dlg.ShowDialog() == true && dlg.StartRequested) await _vm.StartLogAsync();
+    }
+
+    private void OnLogSettings(object sender, RoutedEventArgs e) => new LogWindow(_vm) { Owner = this }.ShowDialog();
+
+    private void OnShowLogFile(object sender, RoutedEventArgs e)
+    {
+        if (_vm.LogPath is { } path) ShowInExplorer(path);
+    }
+
+    private static void ShowInExplorer(string path)
+    {
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", $"/select,\"{path}\"") { UseShellExecute = true });
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+        }
+    }
+
+    private async void OnExport(object sender, RoutedEventArgs e)
+    {
+        var dlg = new Microsoft.Win32.SaveFileDialog
+        {
+            Title = "Export buffer",
+            Filter = "Text transcript (*.log)|*.log|Raw received bytes (*.bin)|*.bin|Session (*.stsession)|*.stsession",
+            FilterIndex = _vm.LogFormat switch { Persistence.LogFormat.Raw => 2, Persistence.LogFormat.Session => 3, _ => 1 },
+            FileName = System.IO.Path.GetFileNameWithoutExtension(_vm.NextLogPath(_vm.LogFormat, _vm.LogFolder, _vm.LogTemplate)),
+            InitialDirectory = _vm.LastExportFolder ?? _vm.LogFolder,
+            AddExtension = true,
+            OverwritePrompt = true,
+        };
+        if (dlg.ShowDialog(this) != true) return;
+        var format = dlg.FilterIndex switch { 2 => Persistence.LogFormat.Raw, 3 => Persistence.LogFormat.Session, _ => Persistence.LogFormat.Text };
+        _vm.LastExportFolder = System.IO.Path.GetDirectoryName(dlg.FileName);
+        await _vm.ExportAsync(format, dlg.FileName);
+    }
+
+    private async void OnOpenSession(object sender, RoutedEventArgs e)
+    {
+        var dlg = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Open session",
+            Filter = "SerialTool session (*.stsession)|*.stsession|All files (*.*)|*.*",
+            InitialDirectory = _vm.LogFolder,
+        };
+        if (dlg.ShowDialog(this) != true) return;
+        await OpenSessionAsync(dlg.FileName);
+    }
+
+    private async Task OpenSessionAsync(string path)
+    {
+        if (_vm.IsConnected || _vm.IsLogging)
+        {
+            var answer = MessageBox.Show(this,
+                "Opening a session disconnects the port" + (_vm.IsLogging ? " and stops the running log" : "") + ", and replaces the buffer. Continue?",
+                "Open Session", MessageBoxButton.OKCancel, MessageBoxImage.Question);
+            if (answer != MessageBoxResult.OK) return;
+        }
+        await _vm.OpenSessionAsync(path);
+    }
+
+    private void OnDragOver(object sender, DragEventArgs e)
+    {
+        e.Effects = DroppedSession(e) is not null ? DragDropEffects.Copy : DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private async void OnDrop(object sender, DragEventArgs e)
+    {
+        if (DroppedSession(e) is { } path) await OpenSessionAsync(path);
+    }
+
+    private static string? DroppedSession(DragEventArgs e) =>
+        e.Data.GetData(DataFormats.FileDrop) is string[] { Length: 1 } files
+        && files[0].EndsWith(Persistence.SessionFile.Extension, StringComparison.OrdinalIgnoreCase)
+            ? files[0]
+            : null;
 }

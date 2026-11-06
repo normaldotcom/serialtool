@@ -6,11 +6,13 @@
         xmlns:controls="clr-namespace:SerialTool.App.Controls"
         Title="{Binding Title}" Height="720" Width="1100" MinWidth="640" MinHeight="400"
         FontFamily="Segoe UI" FontSize="12"
-        UseLayoutRounding="True">
+        UseLayoutRounding="True" AllowDrop="True" Drop="OnDrop" DragOver="OnDragOver">
     <Window.Resources>
         <local:EnumBoolConverter x:Key="EnumBool" />
         <local:EnumDisplayConverter x:Key="EnumDisplay" />
         <local:BoolToVisibilityConverter x:Key="BoolVis" />
+        <local:BoolToVisibilityConverter x:Key="BoolVisInv" Invert="True" />
+        <local:NotConverter x:Key="Not" />
         <local:NonZeroToVisibilityConverter x:Key="NonZeroVis" />
         <local:NonZeroToVisibilityConverter x:Key="ZeroVis" Invert="True" />
         <local:NotEmptyToVisibilityConverter x:Key="NotEmptyVis" />
@@ -81,7 +83,14 @@
         <!-- Menu -->
         <Menu DockPanel.Dock="Top">
             <MenuItem Header="_File">
-                <MenuItem Header="_Send file…" Click="OnSendFile" IsEnabled="{Binding IsConnected}" />
+                <MenuItem Header="_Open Session…" InputGestureText="Ctrl+O" Click="OnOpenSession" />
+                <MenuItem Header="_Export Buffer…" Click="OnExport" IsEnabled="{Binding IsExporting, Converter={StaticResource Not}}" />
+                <Separator />
+                <MenuItem Header="Start _Logging…" Click="OnStartLog" Visibility="{Binding IsLogging, Converter={StaticResource BoolVisInv}}" />
+                <MenuItem Header="Stop _Logging" Command="{Binding StopLogCommand}" Visibility="{Binding IsLogging, Converter={StaticResource BoolVis}}" />
+                <MenuItem Header="Log _Settings…" Click="OnLogSettings" />
+                <Separator />
+                <MenuItem Header="_Send File…" Click="OnSendFile" IsEnabled="{Binding IsConnected}" />
                 <Separator />
                 <MenuItem Header="E_xit" Click="OnExit" />
             </MenuItem>
@@ -212,6 +221,16 @@
                         <Run Text="Sending… (" /><Run Text="{Binding PendingWrites, Mode=OneWay}" /><Run Text=" pending)" />
                     </TextBlock>
                     <Button Content="Cancel" Command="{Binding CancelSendsCommand}" Margin="6,0,0,0" Padding="6,0" />
+                </StackPanel>
+            </StatusBarItem>
+            <StatusBarItem Visibility="{Binding IsLogging, Converter={StaticResource BoolVis}}">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock VerticalAlignment="Center">
+                        <Hyperlink Click="OnShowLogFile" Foreground="#C62828" TextDecorations="{x:Null}" ToolTip="Show the log file in Explorer">
+                            <Run Text="{Binding LogStatusText, Mode=OneWay}" />
+                        </Hyperlink>
+                    </TextBlock>
+                    <Button Content="Stop" Command="{Binding StopLogCommand}" Margin="6,0,0,0" Padding="6,0" />
                 </StackPanel>
             </StatusBarItem>
             <StatusBarItem Visibility="{Binding IsSendingFile, Converter={StaticResource BoolVis}}">

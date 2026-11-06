@@ -17,6 +17,13 @@ public sealed class AppSettings
     public int SendFileChunkSize { get; set; } = 256;
     public int SendFileDelayMs { get; set; }
 
+    public string LogFolder { get; set; } =
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "SerialTool Logs");
+    public string LogTemplate { get; set; } = "{port}_{date}_{time}";
+    public Persistence.LogFormat LogFormat { get; set; } = Persistence.LogFormat.Text;
+    public bool AutoStartLog { get; set; }
+    public string? LastExportFolder { get; set; }
+
     private static readonly JsonSerializerOptions Json = new()
     {
         WriteIndented = true,

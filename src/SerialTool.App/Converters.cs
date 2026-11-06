@@ -91,3 +91,10 @@ public sealed class MacroTipConverter : IValueConverter
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
         DependencyProperty.UnsetValue;
 }
+
+public sealed class NotConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture) => value is not true;
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => value is not true;
+}

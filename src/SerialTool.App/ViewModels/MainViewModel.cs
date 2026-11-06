@@ -43,6 +43,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         Document = new TextDocument(Store, Pipeline.Clock);
         _settings = AppSettings.Load(SettingsPath);
         LoadSettings();
+        Pipeline.EventCaptured += OnEventCaptured;
 
         try
         {
@@ -117,8 +118,13 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     };
 
     public string Title => IsConnected && _source is not null
-        ? $"{_source.Name} {(_source is SerialSource s ? s.Config.ToString() : "")} — SerialTool".Replace("  ", " ")
-        : "SerialTool";
+        ? $"{ConnectionDescription} — SerialTool"
+        : SessionFileName is not null ? $"{SessionFileName} — SerialTool" : "SerialTool";
+
+    /// <summary>Port and settings, e.g. "COM3 115200 8N1" (used in the title and log headers).</summary>
+    public string ConnectionDescription => _source is null
+        ? (SelectedPort?.Name ?? "")
+        : $"{_source.Name} {(_source is SerialSource s ? s.Config.ToString() : "")}".Trim();
 
     // Output lines
     [ObservableProperty] private bool _rts;
@@ -198,8 +204,11 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
 
         // Same port: keep the buffer (one continuous session). Different port: start fresh.
-        if (_lastPortName is not null && !string.Equals(_lastPortName, port.Name, StringComparison.OrdinalIgnoreCase))
+        bool portChanged = _lastPortName is not null && !string.Equals(_lastPortName, port.Name, StringComparison.OrdinalIgnoreCase);
+        if (portChanged)
         {
+            await StopLogAsync(); // a log belongs to one port's session
+            LeaveSessionView();
             Pipeline.Clear();
             Pipeline.ResetCounters();
         }
@@ -207,12 +216,17 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         IDataSource source = port.FakeFactory?.Invoke() ?? new SerialSource(port.Name, config);
         State = ConnectionState.Connecting;
         StateDetail = null;
+
+        // Auto-start the log before opening so it includes the Connected marker and the first bytes.
+        bool autoStarted = AutoStartLog && _log is null
+                           && await StartLogAsync(port.FakeFactory is null ? $"{port.Name} {config}" : port.Name);
         try
         {
             await source.OpenAsync(Pipeline);
         }
         catch (Exception ex)
         {
+            if (autoStarted) await StopLogAsync();
             await source.DisposeAsync();
             State = ConnectionState.Disconnected;
             StateDetail = ex.Message;
@@ -233,6 +247,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             _suppressLineWrites = false;
         }
         State = ConnectionState.Connected;
+        OnPropertyChanged(nameof(ConnectionDescription));
     }
 
     public async Task DisconnectAsync()
@@ -452,7 +467,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
         if (_continuousDoc is null)
         {
-            _continuousDoc = new TextDocument(Store, Pipeline.Clock) { Timestamps = TimestampMode.Off };
+            _continuousDoc = new TextDocument(Store, Document.Clock) { Timestamps = TimestampMode.Off };
             _continuousDoc.Options = ContinuousOptions(Document.Options);
         }
         HexDocument = _continuousDoc;
@@ -510,6 +525,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             _continuousDoc?.Update();
         }
         ScanSearch();
+        TickLog();
         SaveSettingsIfDirty();
         double updateMs = System.Diagnostics.Stopwatch.GetElapsedTime(t0).TotalMilliseconds;
 
@@ -546,6 +562,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     {
         _tick.Stop();
         SaveSettingsIfDirty(force: true);
+        var log = Interlocked.Exchange(ref _log, null);
         _watcher?.Dispose();
         var s = _source;
         _source = null;
@@ -555,5 +572,6 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             try { s.CloseAsync().Wait(TimeSpan.FromSeconds(3)); } catch { }
         }
         try { Pipeline.CompleteAsync().Wait(TimeSpan.FromSeconds(1)); } catch { }
+        try { log?.StopAsync().Wait(TimeSpan.FromSeconds(3)); } catch { }
     }
 }
